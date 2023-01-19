@@ -1,5 +1,5 @@
 """
-   Copyright 2021 Ian Housman
+   Copyright 2022 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -538,12 +538,23 @@ def LT_VT_vertStack_multBands(img, verdet_or_landtrendr, multBy):
 #Simplified method to convert LANDTRENDR stack to annual collection of
 #Duration, fitted, magnitude, slope, and diff
 #Improved handling of start year delay found in older method
-def simpleLTFit(ltStack,startYear,endYear,indexName = ''):
+def simpleLTFit(ltStack,startYear,endYear,indexName = '',arrayMode = False,maxSegs=6):
   indexName = ee.String(indexName)
 
+  #Set up output band names
+  outBns = [indexName.cat('_LT_dur'), indexName.cat('_LT_fitted'), indexName.cat('_LT_mag'), indexName.cat('_LT_slope'), indexName.cat('_LT_diff')]
+
   #Separate years and fitted values of vertices
-  yrs = ltStack.select('yrs_.*').selfMask()
-  fit = ltStack.select('fit_.*').updateMask(yrs.mask())
+  if arrayMode:
+    zeros =ee.Image(ee.Array([0]).repeat(0,maxSegs+2))
+    yrBns = ['yrs_{}'.format(i) for i in range(1,maxSegs+2)]
+    fitBns = ['fit_{}'.format(i) for i in range(1,maxSegs+2)]
+    yrs = ltStack.arraySlice(0,0,1).arrayProject([1]).arrayCat(zeros,0).arraySlice(0, 0, maxSegs+1).arrayFlatten([yrBns]).selfMask()
+    fit = ltStack.arraySlice(0,1,2).arrayProject([1]).arrayCat(zeros,0).arraySlice(0, 0, maxSegs+1).arrayFlatten([fitBns]).updateMask(yrs.mask())
+    
+  else:
+    yrs = ltStack.select('yrs_.*').selfMask()
+    fit = ltStack.select('fit_.*').updateMask(yrs.mask())
   
   #Find the first and last vertex years
   isStartYear = yrs.reduce(ee.Reducer.firstNonNull())
@@ -583,17 +594,31 @@ def simpleLTFit(ltStack,startYear,endYear,indexName = ''):
     fitDiff = segSlope.multiply(tDiff)
     fitted = fitStart.add(fitDiff)
     
-    formatted = segDur.addBands(fitted)\
-                .addBands(segDiff)\
-                .addBands(segSlope)\
-                .addBands(fitDiff)\
-                .rename([indexName.cat('_LT_dur'), indexName.cat('_LT_fitted'), indexName.cat('_LT_mag'), indexName.cat('_LT_slope'), indexName.cat('_LT_diff')])\
+    formatted = ee.Image.cat([segDur,fitted,segDiff,segSlope,fitDiff])\
+                .rename(outBns)\
                 .set('system:time_start',ee.Date.fromYMD(yr,6,1).millis())
 
     return formatted
 
   out = ee.ImageCollection(ee.List.sequence(startYear,endYear).map(lambda yr: getYearValues(yr)))
   return out
+
+# Wrapper function to iterate across multiple LT band/index values
+def batchSimpleLTFit(ltStacks,startYear,endYear,indexNames = None,bandPropertyName = 'band',arrayMode = False,maxSegs=6):
+  #Get band/index names if not provided
+  if indexNames == None:
+    indexNames = ltStacks.aggregate_histogram(bandPropertyName).keys().getInfo()
+
+  # Iterate across each band/index and get the fitted, mag, slope, etc
+  lt_fit = None
+  for bn in indexNames:
+    ltt = ltStacks.filter(ee.Filter.eq('band',bn)).mosaic()
+
+    if lt_fit == None:
+      lt_fit = simpleLTFit(ltt,startYear,endYear,bn,arrayMode,maxSegs)
+    else:
+      lt_fit = joinCollections(lt_fit, simpleLTFit(ltt,startYear,endYear,bn,arrayMode,maxSegs), False)
+  return lt_fit
 
 # Function to parse stack from LANDTRENDR or VERDET into image collection
 # July 2019 LSC: multiply(distDir) and multiply(10000) now take place outside of this function,
@@ -1867,16 +1892,19 @@ def ccdcChangeDetection(ccdcImg,bandName):
   highestMagGainYear = highestMagGainYear.updateMask(highestMagGainMag.gt(0).And(highestMagGainMask));
   highestMagGainMag = highestMagGainMag.updateMask(highestMagGainMag.gt(0).And(highestMagGainMask));
   
-  mostRecentLossYear = breaksSortedByYear.arraySlice(0,0,1).arrayFlatten([['loss_year']])
-  mostRecentLossMag = magnitudesSortedByYear.arraySlice(0,0,1).arrayFlatten([['loss_mag']])
-  mostRecentLossMask = changeMaskSortedByYear.arraySlice(0,0,1).arrayFlatten([['loss_mask']])
-  
-  mostRecentLossYear = mostRecentLossYear.updateMask(mostRecentLossMag.lt(0).And(mostRecentLossMask))
-  mostRecentLossMag = mostRecentLossMag.updateMask(mostRecentLossMag.lt(0).And(mostRecentLossMask))
 
-  mostRecentGainYear = breaksSortedByYear.arraySlice(0,-1,None).arrayFlatten([['gain_year']])
-  mostRecentGainMag = magnitudesSortedByYear.arraySlice(0,-1,None).arrayFlatten([['gain_mag']])
-  mostRecentGainMask = changeMaskSortedByYear.arraySlice(0,-1,None).arrayFlatten([['gain_mask']])
+
+
+  mostRecentLossYear = breaksSortedByYear.arrayMask(magnitudesSortedByYear.lt(0)).arrayPad([1]).arraySlice(0,-1,None).arrayFlatten([['loss_year']]);
+  mostRecentLossMag = magnitudesSortedByYear.arrayMask(magnitudesSortedByYear.lt(0)).arrayPad([1]).arraySlice(0,-1,None).arrayFlatten([['loss_mag']]);
+  mostRecentLossMask = changeMaskSortedByYear.arrayMask(magnitudesSortedByYear.lt(0)).arrayPad([1]).arraySlice(0,-1,None).arrayFlatten([['loss_mask']]);
+  
+  mostRecentLossYear = mostRecentLossYear.updateMask(mostRecentLossMag.lt(0).And(mostRecentLossMask));
+  mostRecentLossMag = mostRecentLossMag.updateMask(mostRecentLossMag.lt(0).And(mostRecentLossMask));
+ 
+  mostRecentGainYear = breaksSortedByYear.arrayMask(magnitudesSortedByYear.gt(0)).arrayPad([1]).arraySlice(0,-1,None).arrayFlatten([['gain_year']]);
+  mostRecentGainMag = magnitudesSortedByYear.arrayMask(magnitudesSortedByYear.gt(0)).arrayPad([1]).arraySlice(0,-1,None).arrayFlatten([['gain_mag']]);
+  mostRecentGainMask = changeMaskSortedByYear.arrayMask(magnitudesSortedByYear.gt(0)).arrayPad([1]).arraySlice(0,-1,None).arrayFlatten([['gain_mask']]);
   
   mostRecentGainYear = mostRecentGainYear.updateMask(mostRecentGainMag.gt(0).And(mostRecentGainMask))
   mostRecentGainMag = mostRecentGainMag.updateMask(mostRecentGainMag.gt(0).And(mostRecentGainMask))

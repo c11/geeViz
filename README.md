@@ -1,11 +1,10 @@
 # GTAC GEE Visualization Python Modules
 > A repository of GEE Python code modules for general data processing, analysis, and visualization
 
-> [Can be accessed in GitHub](https://github.com/rcr-usfs/geeViz)
+> [Can be accessed from the GEE Community Repository](https://github.com/gee-community/geeViz)
 > [Or within the internal Forest Service GitHub instance](https://code.fs.usda.gov/forest-service/geeViz)
-> [Or within the GEE Community Repository](https://github.com/gee-community/geeViz)
-
-> [A javaScript equivalent can be accessed in the GEE Playground](https://earthengine.googlesource.com/users/USFS_GTAC/modules)
+> 
+> [A javaScript equivalent can be accessed in the GEE Playground](https://earthengine.googlesource.com/users/aaronkamoske/GTAC-Modules)
 > [on GitHub](https://github.com/rcr-usfs/gtac-rcr-gee-js-modules.git)
 > [Or withing the Forest Service GitHub instance](https://code.fs.usda.gov/forest-service/gtac-gee-js-modules.git)
 
@@ -39,9 +38,13 @@ folder
 	* `from geeViz.examples import getCombinedLandsatSentinel2Wrapper`
 	* `from geeViz.examples import harmonicRegressionWrapper`
 	* `from geeViz.examples import LANDTRENDRWrapper`
+	* `from geeViz.examples import LANDTRENDRViz`
 	* `from geeViz.examples import CCDCViz`
 	* `from geeViz.examples import lcmsViewerExample`
+	* `from geeViz.examples import LCMAP_and_LCMS_Viewer`
 	* `from geeViz.examples import phEEnoVizWrapper`
+	* `from geeViz.examples import LANDTRENDRViz`
+	* `from geeViz.examples import GFSTimeLapse`
 
 * These examples are a great way of getting started. In order to use them for your work, go to you Python site-packages folder `PythonNN\Lib\site-packages\geeViz`
 * There are several notebook eamples also available. These are very similar to their script counterparts, but are better for learning how to use the tool.

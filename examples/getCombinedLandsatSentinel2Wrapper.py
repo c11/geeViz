@@ -1,5 +1,5 @@
 """
-   Copyright 2021 Ian Housman
+   Copyright 2022 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ sys.path.append(os.getcwd())
 
 #Module imports
 import geeViz.getImagesLib as getImagesLib
+import geeViz.taskManagerLib as taskManagerLib
 ee = getImagesLib.ee
 Map = getImagesLib.Map
 Map.clearMap()
@@ -47,7 +48,7 @@ endJulian = 273
 # well. If providing pre-computed stats for cloudScore and TDOM, this does not 
 # matter
 startYear = 2018
-endYear = 2021
+endYear = 2022
 
 # Specify an annual buffer to include imagery from the same season 
 # timeframe from the prior and following year. timeBuffer = 1 will result 
@@ -74,7 +75,7 @@ compositingMethod = 'medoid'
 # Only choose 'C1' if working with other Collection 1 data and using
 # data from before 1/1/2022. Otherwise, choose 'C2'
 # See: https://www.usgs.gov/landsat-missions/landsat-collection-2 for more information
-landsatCollectionVersion = 'C1'
+landsatCollectionVersion = 'C2'
 
 # Choose Top of Atmospheric (TOA) or Surface Reflectance (SR)
 # Use caution when combining Landsat and S2 SR data since S2 SR data had terrain correction performed 
@@ -229,7 +230,7 @@ outputName = 'Landsat_Sentinel2_Hybrid'
 
 # Provide location composites will be exported to
 # This should be an asset folder, or more ideally, an asset imageCollection
-exportPathRoot = 'users/iwhousman/test/compositeCollection'
+exportPathRoot = 'users/username/someCollection'
 
 
 
@@ -265,6 +266,9 @@ processedAndComposites = getImagesLib.getLandsatAndSentinel2HybridWrapper(studyA
 processedScenes = processedAndComposites['processedScenes']
 processedComposites = processedAndComposites['processedComposites']
 
+# Indicate what type of image is being added to speed up map service creation
+getImagesLib.vizParamsFalse['layerType']= 'geeImage';
+
 # Map.addLayer(processedComposites.select(['NDVI','NBR']),{'addToLegend':'false'},'Time Series (NBR and NDVI)',False)
 for year in range(startYear + timebuffer      ,endYear + 1 - timebuffer ):
      t = processedComposites.filter(ee.Filter.calendarRange(year,year,'year')).mosaic()
@@ -275,4 +279,10 @@ Map.addLayer(studyArea, {'strokeColor': '0000FF'}, "Study Area", True)
 Map.centerObject(studyArea)
 ####################################################################################################
 ####################################################################################################
+# View map
+Map.turnOnInspector()
 Map.view()
+####################################################################################################
+####################################################################################################
+# If exporting composites, track the exports
+if exportComposites:taskManagerLib.trackTasks2()

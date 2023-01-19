@@ -1,3 +1,72 @@
+# geeViz 2023.1.2 Release Notes
+## January 18, 2023
+
+### New Features
+* **Sentinel 1 Basic Processing** - Integration of Guido Lemoine's shared GEE adaptation of the Refined Lee speckle filter from [this script](https://code.earthengine.google.com/2ef38463ebaf5ae133a478f173fd0ab5) as coded in the SNAP 3.0 S1 Toolbox. This can be found in the `getS1` function in the `getImagesLib`.
+____
+# geeViz 2023.1.1 Release Notes
+## January 17, 2023
+
+### Bug fixes
+* When loading very large/complicated outputs into geeView, it would often not load the first time. This bug has been fixed to the page properly loads even with very large/complicated EE objects. It can take a while to load the page however.
+____
+# geeViz 2022.7.2 Release Notes
+## July 8, 2022
+
+### New Features
+* **geeView Service Account Options** - geeView can now utilize a service account key for authentication to GEE. For general guidance for setting up a service account, [see this](https://developers.google.com/earth-engine/guides/service_account). This service account must be white-listed using [this tool](https://signup.earthengine.google.com/#!/service_accounts). Be sure to download the json key to a local, unshared location. To have geeView use a service account key, specify the path to the json key file as the `serviceKeyPath` attribute of the Map object (e.g. `Map.serviceKeyPath = r"c:\someFolder\keyFile.json"`). This will cause geeView to use that file to gain access to GEE instead of using the default persistent refresh token. If it fails, geeView will then try to use the persistent credential method.  
+____
+# geeViz 2022.7.1 Release Notes
+## July 6, 2022
+
+### New Features
+* **geeView Token Options** - geeView now tries to utilize the default location GEE refresh token instead of a proxy. It cannot use private keys from service accounts. You can however specify a different location of the refresh token from the default (e.g. `Map.accessToken = r'C:\someOtherFolder\someOtherPersistentCredentials`). 
+If geeView fails to find a refresh token, it will fall back to utilizing the default proxy location. If that fails, a message will appear. It is best to simply ensure there is a working refresh token available (most easily created using `earthengine authenticate` or `ee.Authenticate()`).
+____
+# geeViz 2022.6.1 Release Notes
+## June 17, 2022
+
+### New Features
+* **Landsat 9 Integration** - Landsat 9 is now included for all Collection 2 Landsat functions.
+* **Specify geeView port** - You can now specify which port to run geeView through by specifying it (e.g. `Map.port = 8000`).
+____
+# geeViz 2022.4.2 Release Notes
+## April 15, 2022
+
+### New Features
+* **GFS Time Lapse Example** - A new example script illustrating how to visualize the GFS forecast model outputs.
+
+
+### Bug fixes
+* When running geeViz from inside certain IDEs (such as IDLE), the use of sys.executable to identify how to run the local web server would hit on the pythonw instead of python executable. If it finds a pythonw under the sys.executable variable, it now forces it to use the python (without a w).
+____
+# geeViz 2022.4.1 Release Notes
+## April 1, 2022
+
+### New Features
+* **Improved LandTrendr decompression method.** - A new function called batchSimpleLTFit has been added to the changeDetectionLib to help provide a faster method for decompressing the LandTrendr stacked output format into a usable time series image collection with all relevant metrics from LandTrendr.
+
+* **LANDTRENDRViz example script.** - A new example script that demonstrates how to visualize and post-process LandTrendr outputs.
+
+* **Common projection info dictionary** - In order to help organize common projections, a common_projections dictionary is now provided in the getImagesLib module. 
+
+### Bug fixes
+* Landsat Collection 2 Level 2 data often have null values in the thermal band. Past versions of geeViz forced all bands to have data (some earlier scenes would have missing data in some but not all bands). This would result in null values in all bands over any area the new Collection 2 surface temperature algorithm could not compute an output. In order to handle this, for Landsat data, all optical bands found in TM, ETM+, and OLI sensors (blue, green, red, nir, swir1, swir2) must have data now, thus allowing a null thermal value to carry through. 
+* Related to the bug fix above - The medoidMosaicMSD function would still result in a null output if any band had null values. In order to fix this, the min reducer was swapped with the qualityMosaic function and the sum of the squared differences is multiplied by -1 so the qualityMosaic function can function properly. This results in almost the identical result. As the sum of the squared differences approaches 0 for more than a single observation for a given pixel, this method can result in a slightly different pixel choice, but should not make any substantive differences in the final composite.
+* Removed the layerType key from the vizParams found within the getImagesLib. If imageCollections were added to the map using addLayer or addTimeLapse, they would not render if using any of the vizParams (vizParamsFalse and vizParamsTrue) since the layer type was explicitly specified as geeImage. You can add the relevant property back into those dictionaries in order to speed up map rendering. Example scripts that make use of these vizParams dictionaries have been updated. e.g. getImagesLib.vizParamsFalse['layerType']= 'geeImage' or getImagesLib.vizParamsFalse['layerType']= 'geeImageCollection' 
+____
+# geeViz 2022.2.1 Release Notes
+## February 14, 2022
+
+### New Features
+* **LCMAP_and_LCMS_Viewer Script and Notebook.** - A new example viewer that displays two US-wide change mapping products - Land Change Monitoring, Assessment, and Projection (LCMAP) produced by USGS and the Landscape Change Monitoring System (LCMS) produced by USFS. Land cover, land use, and change outputs from each product suite are displayed for easy comparison. The notebook facilitates the comparison by bringing in each set of data from the data suites into separate viewers.
+
+* **Task Tracking in Example Scripts** - While the taskManagerLib is not new, the task tracking functionality available within that module was added to the example scripts that export data. 
+
+### Bug fixes
+* Fixed bug in pulling CCDC most recent loss and gain year out. It now behaves in a similar manner as the most recent loss and gain outputs.
+
+____
 # geeViz 2021.12.1 Release Notes
 ## December 27, 2021
 

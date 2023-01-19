@@ -1,6 +1,6 @@
 '''
 Based on https://github.com/google/earthengine-community/blob/master/datasets/scripts/LCMS_Visualization.js
- * Copyright 2021 The Google Earth Engine Community Authors
+ * Copyright 2022 The Google Earth Engine Community Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ def getMostRecentChange(c, code):
 ### Bring in LCMS annual outputs ###
 #############################################################################
 
-lcms = ee.ImageCollection('USFS/GTAC/LCMS/v2020-5');
+lcms = ee.ImageCollection('USFS/GTAC/LCMS/v2021-7');
 bandNames =  lcms.first().bandNames().getInfo()
 print('Available study areas:', lcms.aggregate_histogram('study_area').keys().getInfo());
 print('Available LCMS products',bandNames);

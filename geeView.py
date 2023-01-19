@@ -17,7 +17,10 @@
 #Intended to work within the geeViz package
 ######################################################################
 #Import modules
-import ee,sys,os,webbrowser,json,socket,subprocess,site,time
+import ee,sys,os,webbrowser,json,socket,subprocess,site,time,requests
+from google.auth.transport import requests as gReq
+from google.oauth2 import service_account
+
 from threading import Thread
 from IPython.display import IFrame
 if sys.version_info[0] < 3:
@@ -50,30 +53,66 @@ print('geeViz package folder:', py_viz_dir)
 template = os.path.join(py_viz_dir,geeViewFolder,'index.html')
 ee_run_dir =  os.path.join(py_viz_dir, geeViewFolder,'js')
 if os.path.exists(ee_run_dir) == False:os.makedirs(ee_run_dir)
-ee_run = os.path.join(ee_run_dir, 'runGeeViz.js')
 
-#Specify port to run on
-local_server_port = 8005    
+
 ######################################################################
 ######################################################################
 #Functions
+
+# Function for cleaning trailing .... in accessToken
+def cleanAccessToken(accessToken):
+    while accessToken[-1] == '.': accessToken = accessToken[:-1]
+    return accessToken
+
+# Function for using default GEE refresh token to get an access token for geeView
+def refreshToken(refresh_token_path = ee.oauth.get_credentials_path()):
+    try:
+        refresh_token=json.load(open(refresh_token_path))['refresh_token']
+    except Exception as e:
+        print('Could not find refresh token at:',refresh_token_path)
+        refresh_token = ''
+
+    params = {
+            "grant_type": "refresh_token",
+            "client_id": ee.oauth.CLIENT_ID,
+            "client_secret": ee.oauth.CLIENT_SECRET,
+            "refresh_token": refresh_token
+    }
+    r = requests.post(ee.oauth.TOKEN_URI, data=params)
+
+    if r.ok:
+        return cleanAccessToken(r.json()['access_token'])
+    else:
+        return None
+
+# Function for using a GEE white-listed service account key to get an access token for geeView
+def serviceAccountToken(service_key_file_path):
+    try:
+        credentials = service_account.Credentials.from_service_account_file(service_key_file_path, scopes=ee.oauth.SCOPES)
+        credentials.refresh(gReq.Request())
+        accessToken = credentials.token
+        accessToken = cleanAccessToken(accessToken)
+        return accessToken
+    except Exception as e:
+        print(e)
+        print('Failed to utilize service account key file.')
+        return None
 #Function for running local web server
 def run_local_server(port = 8001):
     if sys.version[0] == '2':
         server_name = 'SimpleHTTPServer'
     else:
         server_name = 'http.server'
-    # c = '"{}" -m {} -d "{}" {}'.format(sys.executable, server_name,py_viz_dir,str(local_server_port))
     cwd = os.getcwd()
     os.chdir(py_viz_dir)
     # print('cwd',os.getcwd())
-    c = '"{}" -m {}  {}'.format(sys.executable, server_name,local_server_port)
+    python_path = sys.executable
+    if python_path.find('pythonw')>-1:python_path = python_path.replace('pythonw','python')
+    c = '"{}" -m {}  {}'.format(python_path, server_name,port)
     print('HTTP server command:',c)
-    # call = 
     subprocess.Popen(c,shell = True)
     os.chdir(cwd)
-    # print('cwd',os.getcwd())
-    # call.wait()
+
 
 
 #Function to see if port is active
@@ -88,11 +127,15 @@ def isPortActive(port = 8001):
 
 #Set up map object
 class mapper:
-    def __init__(self):
+    def __init__(self,port = 8001):
+        self.port = port
         self.layerNumber = 1
         self.idDictList = []
         self.mapCommandList  = []
-
+        self.ee_run_name = 'runGeeViz'
+        self.refreshTokenPath = ee.oauth.get_credentials_path()
+        self.serviceKeyPath = None
+        
     #Function for adding a layer to the map
     def addLayer(self,image,viz = {},name= None,visible= True):
         if name == None:
@@ -126,9 +169,9 @@ class mapper:
     #Function for centering on a GEE object that has a geometry
     def centerObject(self,feature):
         try:
-            bounds = json.dumps(feature.geometry().bounds().getInfo())
+            bounds = json.dumps(feature.geometry().bounds(100).getInfo())
         except Exception as e:
-            bounds = json.dumps(feature.bounds().getInfo())
+            bounds = json.dumps(feature.bounds(100).getInfo())
         command = 'synchronousCenterObject('+bounds+')'
         
         self.mapCommandList.append(command)
@@ -136,8 +179,18 @@ class mapper:
     def view(self,open_browser = True, open_iframe = False,iframe_height = 525):
         print('Starting webmap')
 
-        #Set up js code to populate
-        lines = "showMessage('Loading',staticTemplates.loadingModal);\nfunction runGeeViz(){\n"
+        # Get access token
+        if self.serviceKeyPath == None:
+            print('Using default refresh token for geeView:',self.refreshTokenPath)
+            self.accessToken = refreshToken(self.refreshTokenPath)
+        else:
+            print('Using service account key for geeView:',self.serviceKeyPath)
+            self.accessToken = serviceAccountToken(self.serviceKeyPath)
+            if self.accessToken == None:
+                print('Trying to authenticate to GEE using persistent refresh token.')
+                self.accessToken = refreshToken(self.refreshTokenPath)
+        #Set up js code to populate0
+        lines = "showMessage('Loading',staticTemplates.loadingModal[mode]);\nfunction runGeeViz(){\n"
 
 
         #Iterate across each map layer to add js code to
@@ -154,34 +207,40 @@ class mapper:
         lines+= "}"
         
         #Write out js file
-        oo = open(ee_run,'w')
+        self.ee_run = os.path.join(ee_run_dir, '{}.js'.format(self.ee_run_name))
+        oo = open(self.ee_run,'w')
         oo.writelines(lines)
         oo.close()
-        if not isPortActive(local_server_port):
-            print('Starting local web server at: http://localhost:{}/{}/'.format(local_server_port,geeViewFolder))
-            run_local_server(local_server_port)
+        # time.sleep(5)
+        if not isPortActive(self.port):
+            print('Starting local web server at: http://localhost:{}/{}/'.format(self.port,geeViewFolder))
+            run_local_server(self.port)
             print('Done')
-            # t = Thread(target = run_local_server,args = (local_server_port,))
-            # t.start()
+            
 
         else:
-            print('Local web server at: http://localhost:{}/{}/ already serving.'.format(local_server_port,geeViewFolder))
+            print('Local web server at: http://localhost:{}/{}/ already serving.'.format(self.port,geeViewFolder))
             # print('Refresh browser instance')
         print('cwd',os.getcwd())
         if open_browser:
-            webbrowser.open('http://localhost:{}/{}/'.format(local_server_port,geeViewFolder),new = 1)
+            webbrowser.open('http://localhost:{}/{}/?accessToken={}'.format(self.port,geeViewFolder,self.accessToken),new = 1)
         if open_iframe:
-            self.IFrame = IFrame(src='http://localhost:{}/{}/'.format(local_server_port,geeViewFolder), width='100%', height='{}px'.format(iframe_height))
+            self.IFrame = IFrame(src='http://localhost:{}/{}/?accessToken={}'.format(self.port,geeViewFolder,self.accessToken), width='100%', height='{}px'.format(iframe_height))
     def clearMap(self):
         self.layerNumber = 1
         self.idDictList = []
         self.mapCommandList  = []
-    
+    def setMapTitle(self,title):
+        query_command = "$('#title-banner').html('{0}');document.title = 'geeViz | {0}';".format(title)
+        if query_command not in self.mapCommandList:
+            self.mapCommandList.append(query_command)
+    def setTitle(self,title):
+        self.setMapTitle(title)
     def turnOnInspector(self):
         # self.mapCommandList.append("$('#tools-collapse-div').addClass('show')")
         query_command = "$('#query-label').click();"
         if query_command not in self.mapCommandList:
-            self.mapCommandList.append("$('#query-label').click();")
+            self.mapCommandList.append(query_command)
         
     def turnOffAllLayers(self):
         update = {'visible':'false'}

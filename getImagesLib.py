@@ -28,31 +28,34 @@ except:
 #Module for getting Landsat, Sentinel 2 and MODIS images/composites
 #Define visualization parameters
 vizParamsFalse = {\
-  'min': 0.05, 
-  'max': [0.5,0.6,0.6], 
-  'bands': 'swir1,nir,red', 
-  'gamma': 1.6,
-  'layerType':'geeImage'\
+  'min': 0.05,
+  'max': [0.5,0.6,0.6],
+  'bands': 'swir1,nir,red',
+  'gamma': 1.6\
 }
 vizParamsFalse10k = {\
-  'min': 0.05*10000, 
-  'max': [0.5*10000,0.6*10000,0.6*10000], 
-  'bands': 'swir1,nir,red', 
-  'gamma': 1.6,
-  'layerType':'geeImage'\
+  'min': 0.05*10000,
+  'max': [0.5*10000,0.6*10000,0.6*10000],
+  'bands': 'swir1,nir,red',
+  'gamma': 1.6\
 }
 vizParamsTrue = {\
-  'min': 0, 
-  'max': [0.2,0.2,0.2], 
-  'bands': 'red,green,blue', 
-  'layerType':'geeImage'\
+  'min': 0,
+  'max': [0.2,0.2,0.2],
+  'bands': 'red,green,blue'\
 }
 vizParamsTrue10k = {\
-  'min': 0, 
-  'max': [0.2*10000,0.2*10000,0.2*10000], 
-  'bands': 'red,green,blue',
-  'layerType':'geeImage'\
+  'min': 0,
+  'max': [0.2*10000,0.2*10000,0.2*10000],
+  'bands': 'red,green,blue'\
 }
+
+common_projections = {}
+common_projections['NLCD_CONUS'] = {'crs':'PROJCS["Albers_Conical_Equal_Area",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["latitude_of_center",23],PARAMETER["longitude_of_center",-96],PARAMETER["standard_parallel_1",29.5],PARAMETER["standard_parallel_2",45.5],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["meters",1],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
+                              'transform': [30,0,-2361915.0,0,-30,3177735.0]}
+common_projections['NLCD_AK'] = {'crs':'PROJCS["Albers_Conical_Equal_Area",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9108"]],AUTHORITY["EPSG","4326"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["standard_parallel_1",55],PARAMETER["standard_parallel_2",65],PARAMETER["latitude_of_center",50],PARAMETER["longitude_of_center",-154],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["meters",1]]',
+                                  'transform':[30,0,-48915.0,0,-30,1319415.0]}
+
 
 #Direction of  a decrease in photosynthetic vegetation- add any that are missing
 changeDirDict = {\
@@ -64,7 +67,7 @@ changeDirDict = {\
 "ND_red_swir2":-1,"ND_nir_red":-1,"ND_nir_swir1":-1,"ND_nir_swir2":-1,"ND_swir1_swir2":-1,\
 "R_swir1_nir":1,"R_red_swir1":-1,"EVI":-1,"SAVI":-1,"IBI":1,\
 "tcAngleBG":-1,"tcAngleGW":-1,"tcAngleBW":-1,"tcDistBG":1,"tcDistGW":1,"tcDistBW":1,\
-'NIRv':-1\
+'NIRv':-1,'NDCI':-1,'NDGI':-1\
 }
 
 
@@ -123,7 +126,7 @@ def formatArgs(args):
       if type(args[key]) in [bool, list, dict, type(None)]:
         formattedArgs[key] = str(args[key])
       elif type(args[key]) in [str, int]:
-        formattedArgs[key] = args[key] 
+        formattedArgs[key] = args[key]
   return formattedArgs
 ######################################################################
 ######################################################################
@@ -182,7 +185,7 @@ msiETMIntercepts = [-0.0139,0.00411,-0.0024,-0.0076,0.00411,0.00861]
 oliETMSlopes =[1.03501,1.00921,1.01991,1.14061,1.04351,1.05271]
 oliETMIntercepts = [-0.0055,-0.0008,-0.0021,-0.0163,-0.0045,0.00261]
 
-#Construct dictionary to handle all pairwise combos 
+#Construct dictionary to handle all pairwise combos
 chastainCoeffDict = {'MSI_OLI':[msiOLISlopes,msiOLIIntercepts,1],\
                          'MSI_ETM':[msiETMSlopes,msiETMIntercepts,1],\
                          'OLI_ETM':[oliETMSlopes,oliETMIntercepts,1],\
@@ -222,7 +225,7 @@ def harmonizationChastain(img, fromSensor, toSensor):
   slopes = coeffList[0]
   intercepts = coeffList[1]
   direction = ee.Number(coeffList[2])
-  
+
   #Apply the model in the respective direction
   out = ee.Algorithms.If(direction.eq(0), dir0Regression(img,slopes,intercepts), dir1Regression(img,slopes,intercepts))
   out = ee.Image(out).copyProperties(img).copyProperties(img,['system:time_start'])
@@ -251,7 +254,7 @@ def compositeDates(images, composite, bandNames = None):
   else:
     images = images.select(bandNames)
     composite = composite.select(bandNames)
-  
+
   def bnCat(bn):
     return ee.String(bn).cat('_diff')
 
@@ -261,12 +264,12 @@ def compositeDates(images, composite, bandNames = None):
   def getDiff(img):
     out = img.subtract(composite).abs().multiply(-1).rename(bns)
     return img.addBands(out);
-  
+
 
   #Find the diff and add a date band
   images = images.map(getDiff)
   images = images.map(addDateBand)
-  
+
   #Iterate across each band and find the corresponding date to the composite
   def bnCat2(bn):
     bn = ee.String(bn)
@@ -278,13 +281,13 @@ def compositeDates(images, composite, bandNames = None):
   out = collectionToImage(ee.ImageCollection(out))
   #var outBns = bandNames.map(function(bn){return ee.String(bn).cat('YYYYDD')});
   #out = out.rename(outBns);
-  
+
   return out
 
 ############################################################################
 #Function to handle empty collections that will cause subsequent processes to fail
 #If the collection is empty, will fill it with an empty image
-def fillEmptyCollections(inCollection,dummyImage):                       
+def fillEmptyCollections(inCollection,dummyImage):
   dummyCollection = ee.ImageCollection([dummyImage.mask(ee.Image(0))])
   imageCount = inCollection.toList(1).length()
   return ee.ImageCollection(ee.Algorithms.If(imageCount.gt(0),inCollection,dummyCollection))
@@ -296,6 +299,7 @@ def addSensorBand(img, whichProgram, toaOrSR):
               'LANDSAT_5': 5,
               'LANDSAT_7': 7,
               'LANDSAT_8': 8,
+              'LANDSAT_9': 9,
               'Sentinel-2A': 21,
               'Sentinel-2B': 22,
               'Sentinel-2C': 23,
@@ -315,7 +319,7 @@ def addSensorBand(img, whichProgram, toaOrSR):
                   })
   toaOrSR = toaOrSR.upper()
   sensorProp = ee.Dictionary(sensorPropDict.get(whichProgram)).get(toaOrSR)
-  sensorName = img.get(sensorProp)  
+  sensorName = img.get(sensorProp)
   img = img.addBands(ee.Image.constant(sensorDict.get(sensorName)).rename(['sensor']).byte()).set('sensor',sensorName)
   return img
 
@@ -330,7 +334,7 @@ def addDateBand(img, maskTime = False):
   #d=d.getFraction('year')
   db = ee.Image.constant(d).rename(['year']).float()
   if maskTime:
-    db = db.updateMask(img.select([0]).mask())  
+    db = db.updateMask(img.select([0]).mask())
   return img.addBands(db)
 
 def addYearFractionBand(img):
@@ -354,7 +358,7 @@ def addYearYearFractionBand(img):
 def addYearBand(img):
   d = ee.Date(img.get('system:time_start'))
   y = d.get('year')
-  
+
   db = ee.Image.constant(y).rename(['year']).float()
   db = db#.updateMask(img.select([0]).mask())
   return img.addBands(db)
@@ -373,7 +377,7 @@ def addYearJulianDayBand(img):
 def addFullYearJulianDayBand(img):
   d = ee.Date(img.get('system:time_start'));
   yj = ee.Image(ee.Number.parse(d.format('YYYYDD'))).rename(['yearJulian']).int64()
-  
+
   return img.addBands(yj).float()
 
 def offsetImageDate(img, n, unit):
@@ -436,12 +440,12 @@ k = ee.Kernel.fixed(41, 41, \
 def defringeLandsat(img):
   #Find any pixel without sufficient non null pixels (fringes)
   m = img.mask().reduce(ee.Reducer.min())
-  
+
   #Apply kernel
   kernelSum = m.reduceNeighborhood(ee.Reducer.sum(), k, 'kernel')
   #Map.addLayer(img,vizParams,'with fringes')
   #Map.addLayer(sum,{'min':20,'max':241},'sum41',false)
-  
+
   #Mask pixels w/o sufficient obs
   kernelSum = kernelSum.gte(fringeCountThreshold)
   img = img.mask(kernelSum)
@@ -468,7 +472,7 @@ def dailyMosaics(imgs):
 
   #Find the unique days
   dayOrbits  = ee.Dictionary(imgs.aggregate_histogram('date-orbit')).keys()
-  
+
   def dayWrapper(d):
     date = ee.Date(ee.String(d).split('_').get(0))
     orbit = ee.Number.parse(ee.String(d).split('_').get(1))
@@ -481,14 +485,145 @@ def dailyMosaics(imgs):
     return t
   imgs = dayOrbits.map(dayWrapper)
   imgs = ee.ImageCollection.fromImages(imgs)
-    
+
   return imgs
+################################################################
+# Sentinel 1 processing
+# Adapted from: https://code.earthengine.google.com/39a3ad5ac59cd8af14e3dbd78436d2b5
+# Author: Warren Scott
+
+#--------------------------------------- DEFINE SPECKLEFUNCTION---------------------------------------------------*/
+
+# Sigma Lee filter
+def toNatural(img):
+  return ee.Image(10.0).pow(img.select(0).divide(10.0))
+def toDB(img):
+  return ee.Image(img).log10().multiply(10.0)
+
+
+# The RL speckle filter from https://code.earthengine.google.com/2ef38463ebaf5ae133a478f173fd0ab5 by Guido Lemoine
+# As coded in the SNAP 3.0 S1TBX:
+def RefinedLee(img): 
+  # img must be in natural units, i.e. not in dB!
+  # Set up 3x3 kernels 
+  weights3 = ee.List.repeat(ee.List.repeat(1,3),3)
+  kernel3 = ee.Kernel.fixed(3,3, weights3, 1, 1, False)
+
+  mean3 = img.reduceNeighborhood(ee.Reducer.mean(), kernel3)
+  variance3 = img.reduceNeighborhood(ee.Reducer.variance(), kernel3)
+
+  # Use a sample of the 3x3 windows inside a 7x7 windows to determine gradients and directions
+  sample_weights = ee.List([[0,0,0,0,0,0,0], [0,1,0,1,0,1,0],[0,0,0,0,0,0,0], 
+    [0,1,0,1,0,1,0], [0,0,0,0,0,0,0], [0,1,0,1,0,1,0],[0,0,0,0,0,0,0]])
+
+  sample_kernel = ee.Kernel.fixed(7,7, sample_weights, 3,3, False)
+
+  # Calculate mean and variance for the sampled windows and store as 9 bands
+  sample_mean = mean3.neighborhoodToBands(sample_kernel)
+  sample_var = variance3.neighborhoodToBands(sample_kernel)
+
+  # Determine the 4 gradients for the sampled windows
+  gradients = sample_mean.select(1).subtract(sample_mean.select(7)).abs()
+  gradients = gradients.addBands(sample_mean.select(6).subtract(sample_mean.select(2)).abs())
+  gradients = gradients.addBands(sample_mean.select(3).subtract(sample_mean.select(5)).abs())
+  gradients = gradients.addBands(sample_mean.select(0).subtract(sample_mean.select(8)).abs())
+
+  # And find the maximum gradient amongst gradient bands
+  max_gradient = gradients.reduce(ee.Reducer.max())
+
+  # Create a mask for band pixels that are the maximum gradient
+  gradmask = gradients.eq(max_gradient)
+
+  # duplicate gradmask bands: each gradient represents 2 directions
+  gradmask = gradmask.addBands(gradmask)
+
+  # Determine the 8 directions
+  directions = sample_mean.select(1).subtract(sample_mean.select(4))\
+    .gt(sample_mean.select(4).subtract(sample_mean.select(7))).multiply(1)
+  directions = directions.addBands(sample_mean.select(6).subtract(sample_mean.select(4))\
+    .gt(sample_mean.select(4).subtract(sample_mean.select(2))).multiply(2))
+  directions = directions.addBands(sample_mean.select(3).subtract(sample_mean.select(4))\
+    .gt(sample_mean.select(4).subtract(sample_mean.select(5))).multiply(3))
+  directions = directions.addBands(sample_mean.select(0).subtract(sample_mean.select(4))\
+    .gt(sample_mean.select(4).subtract(sample_mean.select(8))).multiply(4))
+    
+  # The next 4 are the not() of the previous 4
+  directions = directions.addBands(directions.select(0).Not().multiply(5))
+  directions = directions.addBands(directions.select(1).Not().multiply(6))
+  directions = directions.addBands(directions.select(2).Not().multiply(7))
+  directions = directions.addBands(directions.select(3).Not().multiply(8))
+
+  # Mask all values that are not 1-8
+  directions = directions.updateMask(gradmask)
+
+  # "collapse" the stack into a singe band image (due to masking, each pixel has just one value (1-8) in it's directional band, and is otherwise masked)
+  directions = directions.reduce(ee.Reducer.sum())  
+
+  # var pal = ['ffffff','ff0000','ffff00', '00ff00', '00ffff', '0000ff', 'ff00ff', '000000'];
+  # Map.addLayer(directions.reduce(ee.Reducer.sum()), {min:1, max:8, palette: pal}, 'Directions', false);
+
+  sample_stats = sample_var.divide(sample_mean.multiply(sample_mean))
+
+  # Calculate localNoiseVariance
+  sigmaV = sample_stats.toArray().arraySort().arraySlice(0,0,5).arrayReduce(ee.Reducer.mean(), [0])
+
+  # Set up the 7*7 kernels for directional statistics
+  rect_weights = ee.List.repeat(ee.List.repeat(0,7),3).cat(ee.List.repeat(ee.List.repeat(1,7),4))
+
+  diag_weights = ee.List([[1,0,0,0,0,0,0], [1,1,0,0,0,0,0], [1,1,1,0,0,0,0],[1,1,1,1,0,0,0], [1,1,1,1,1,0,0], [1,1,1,1,1,1,0], [1,1,1,1,1,1,1]])
+
+  rect_kernel = ee.Kernel.fixed(7,7, rect_weights, 3, 3, False)
+  diag_kernel = ee.Kernel.fixed(7,7, diag_weights, 3, 3, False)
+
+  # Create stacks for mean and variance using the original kernels. Mask with relevant direction.
+  dir_mean = img.reduceNeighborhood(ee.Reducer.mean(), rect_kernel).updateMask(directions.eq(1))
+  dir_var = img.reduceNeighborhood(ee.Reducer.variance(), rect_kernel).updateMask(directions.eq(1))
+
+  dir_mean = dir_mean.addBands(img.reduceNeighborhood(ee.Reducer.mean(), diag_kernel).updateMask(directions.eq(2)))
+  dir_var = dir_var.addBands(img.reduceNeighborhood(ee.Reducer.variance(), diag_kernel).updateMask(directions.eq(2)))
+
+  # and add the bands for rotated kernels
+  for i in range(1,4):
+    dir_mean = dir_mean.addBands(img.reduceNeighborhood(ee.Reducer.mean(), rect_kernel.rotate(i)).updateMask(directions.eq(2*i+1)))
+    dir_var = dir_var.addBands(img.reduceNeighborhood(ee.Reducer.variance(), rect_kernel.rotate(i)).updateMask(directions.eq(2*i+1)))
+    dir_mean = dir_mean.addBands(img.reduceNeighborhood(ee.Reducer.mean(), diag_kernel.rotate(i)).updateMask(directions.eq(2*i+2)))
+    dir_var = dir_var.addBands(img.reduceNeighborhood(ee.Reducer.variance(), diag_kernel.rotate(i)).updateMask(directions.eq(2*i+2)))
+  
+
+  # "collapse" the stack into a single band image (due to masking, each pixel has just one value in it's directional band, and is otherwise masked)
+  dir_mean = dir_mean.reduce(ee.Reducer.sum())
+  dir_var = dir_var.reduce(ee.Reducer.sum())
+
+  # A finally generate the filtered value
+  varX = dir_var.subtract(dir_mean.multiply(dir_mean).multiply(sigmaV)).divide(sigmaV.add(1.0))
+
+  b = varX.divide(dir_var)
+
+  result = dir_mean.add(b.multiply(img.subtract(dir_mean)))
+  return(result.arrayFlatten([['sum']]))
 
 ################################################################
-def getS2(studyArea, 
-          startDate, 
-          endDate, 
-          startJulian, 
+
+# Load and filter Sentinel-1 GRD data by predefined parameters 
+def getS1(studyArea,startYear,endYear,startJulian,endJulian,polarization = "VV",pass_direction = "ASCENDING"):
+  collection= ee.ImageCollection('COPERNICUS/S1_GRD')\
+  .filter(ee.Filter.calendarRange(startYear,endYear,'year'))\
+  .filter(ee.Filter.calendarRange(startJulian,endJulian))\
+  .filter(ee.Filter.eq('instrumentMode','IW'))\
+  .filter(ee.Filter.listContains('transmitterReceiverPolarisation', polarization))\
+  .filter(ee.Filter.eq('orbitProperties_pass',pass_direction))\
+  .filter(ee.Filter.eq('resolution_meters',10))\
+  .filterBounds(studyArea)\
+  .select([polarization])
+
+  return collection
+################################################################
+# Function to get Sentinel 2 A and B data into a single collection with meaningful band names for a specified area and date range
+# Will also join the S2 cloudless cloud probability collection if specified
+def getS2(studyArea,
+          startDate,
+          endDate,
+          startJulian,
           endJulian,
           resampleMethod = 'aggregate',
           toaOrSR = 'TOA',
@@ -499,12 +634,15 @@ def getS2(studyArea,
 
   toaOrSR = toaOrSR.upper()
 
-  s2CollectionDict = {'TOA':'COPERNICUS/S2','SR':'COPERNICUS/S2_SR'}
+  # 3/22 - Changed to using the _HARMONIZED collections following the introduction of a 1000 value offset from Jan 25 2022 onward
+  # These collections account for these differences
+  s2CollectionDict = {'TOA':'COPERNICUS/S2_HARMONIZED','SR':'COPERNICUS/S2_SR_HARMONIZED'}
+
   sensorBandDict = {\
       'SR': ['B1','B2','B3','B4','B5','B6','B7','B8','B8A', 'B9', 'B11','B12'],
       'TOA': ['B1','B2','B3','B4','B5','B6','B7','B8','B8A', 'B9', 'B10', 'B11','B12']\
   }
-  
+
   sensorBandNameDict = {\
       'SR': ['cb', 'blue', 'green', 'red', 're1','re2','re3','nir', 'nir2', 'waterVapor', 'swir1', 'swir2'],
       'TOA': ['cb', 'blue', 'green', 'red', 're1','re2','re3','nir', 'nir2', 'waterVapor', 'cirrus','swir1', 'swir2']\
@@ -512,9 +650,9 @@ def getS2(studyArea,
 
   def multS2(img):
     t = img.select(sensorBandDict[toaOrSR]).divide(10000)
-    t = t.addBands(img.select(['QA60']))
-    out = t.copyProperties(img).copyProperties(img,['system:time_start'])
-    return out
+    # t = t.addBands(img.select(['QA60']))
+    # out = t.copyProperties(img).copyProperties(img,['system:time_start'])
+    return img.addBands(t,None,True)
 
   #Get some s2 data
   print('Using S2 Collection:', s2CollectionDict[toaOrSR])
@@ -524,8 +662,8 @@ def getS2(studyArea,
             .filterBounds(studyArea)\
             .map(multS2)\
             .select(['QA60']+sensorBandDict[toaOrSR],['QA60']+sensorBandNameDict[toaOrSR])
-  
-  
+
+
 
   if addCloudProbability:
     print('Joining pre-computed cloud probabilities from: COPERNICUS/S2_CLOUD_PROBABILITY')
@@ -534,14 +672,14 @@ def getS2(studyArea,
                     .filter(ee.Filter.calendarRange(startJulian, endJulian))\
                     .filterBounds(studyArea)\
                     .select(['probability'],['cloud_probability'])
-                    
+
     cloudProbabilitiesIds = ee.List(ee.Dictionary(cloudProbabilities.aggregate_histogram('system:index')).keys())
     s2sIds = ee.List(ee.Dictionary(s2s.aggregate_histogram('system:index')).keys())
     missing = s2sIds.removeAll(cloudProbabilitiesIds)
     # print('Missing cloud probability ids:', missing.getInfo())
     # print('N s2 images before joining with cloud prob:', s2s.size().getInfo())
     s2s = joinCollections(s2s, cloudProbabilities, False,'system:index')
-    # print('N s2 images after joining with cloud prob:', s2s.size().getInfo())    
+    # print('N s2 images after joining with cloud prob:', s2s.size().getInfo())
 
   if resampleMethod == 'bilinear' or resampleMethod == 'bicubic':
     print('Setting resample method to ', resampleMethod)
@@ -577,6 +715,7 @@ landsatSensorBandDict = {
 'C2_L7_TOA':['B1','B2','B3','B4','B5','B6_VCID_1','B7','QA_PIXEL'],
 'C1_L8_TOA':['B2','B3','B4','B5','B6','B10','B7','BQA'],
 'C2_L8_TOA':['B2','B3','B4','B5','B6','B10','B7','QA_PIXEL'],
+'C2_L9_TOA':['B2','B3','B4','B5','B6','B10','B7','QA_PIXEL'],
 'C1_L4_SR':['B1','B2','B3','B4','B5','B6','B7','pixel_qa'],
 'C2_L4_SR':['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','ST_B6','SR_B7','QA_PIXEL'],
 'C1_L5_SR':['B1','B2','B3','B4','B5','B6','B7','pixel_qa'],
@@ -585,6 +724,7 @@ landsatSensorBandDict = {
 'C2_L7_SR':['SR_B1','SR_B2','SR_B3','SR_B4','SR_B5','ST_B6','SR_B7','QA_PIXEL'],
 'C1_L8_SR':['B2','B3','B4','B5','B6','B10','B7','pixel_qa'],
 'C2_L8_SR':['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','ST_B10','SR_B7','QA_PIXEL'],
+'C2_L9_SR':['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','ST_B10','SR_B7','QA_PIXEL'],
 }
 
 # Provide common band names
@@ -606,10 +746,12 @@ landsatCollectionDict = {
   'C1_L7_SR': 'LANDSAT/LE07/C01/T1_SR',\
   'C1_L5_SR': 'LANDSAT/LT05/C01/T1_SR',\
   'C1_L4_SR': 'LANDSAT/LT04/C01/T1_SR',\
+  'C2_L9_TOA': 'LANDSAT/LC09/C02/T1',\
   'C2_L8_TOA': 'LANDSAT/LC08/C02/T1',\
   'C2_L7_TOA': 'LANDSAT/LE07/C02/T1',\
   'C2_L5_TOA': 'LANDSAT/LT05/C02/T1',\
   'C2_L4_TOA': 'LANDSAT/LT04/C02/T1',\
+  'C2_L9_SR': 'LANDSAT/LC09/C02/T1_L2',\
   'C2_L8_SR': 'LANDSAT/LC08/C02/T1_L2',\
   'C2_L7_SR': 'LANDSAT/LE07/C02/T1_L2',\
   'C2_L5_SR': 'LANDSAT/LT05/C02/T1_L2',\
@@ -629,7 +771,7 @@ def applyScaleFactors(image,landsatCollectionVersion):
   return image.addBands(opticalBands, None, True)\
               .addBands(thermalBands, None, True)
 ##################################################################
-#Function for acquiring Landsat TOA image collection
+#Function for acquiring Landsat image collections
 def getLandsat(studyArea,
               startDate,
               endDate,
@@ -640,8 +782,8 @@ def getLandsat(studyArea,
               defringeL5 = False,
               addPixelQA = False,
               resampleMethod = 'near',
-              landsatCollectionVersion = 'C1'):
-  
+              landsatCollectionVersion = 'C2'):
+
   args = formatArgs(locals())
 
 
@@ -653,9 +795,9 @@ def getLandsat(studyArea,
         .filter(ee.Filter.lte('WRS_ROW',120))
     if toaOrSR.lower() == 'toa':
       c = c.map(ee.Algorithms.Landsat.TOA)
-    
+
     c = c.select(landsatSensorBandDict[landsatCollectionVersion+'_'+whichC+'_'+toaOrSR],landsatSensorBandNameDict[landsatCollectionVersion+'_'+toaOrSR])
-    
+
     if toaOrSR.lower() == 'sr':
       c = c.map(lambda image:applyScaleFactors(image,landsatCollectionVersion))
 
@@ -664,14 +806,16 @@ def getLandsat(studyArea,
     #Get Landsat data
     l4s = getLandsatCollection(landsatCollectionVersion,'L4',toaOrSR)
     l5s = getLandsatCollection(landsatCollectionVersion,'L5',toaOrSR)
-      
+
     if defringeL5:
       print('Defringing L4 and L5')
       l4s = l4s.map(defringeLandsat)
       l5s = l5s.map(defringeLandsat)
 
     l8s = getLandsatCollection(landsatCollectionVersion,'L8',toaOrSR)
-    
+
+
+
   #   var ls; var l7s;
     if includeSLCOffL7:
       print('Including All Landsat 7')
@@ -680,9 +824,15 @@ def getLandsat(studyArea,
       print('Only including SLC On Landsat 7');
       l7s = getLandsatCollection(landsatCollectionVersion,'L7',toaOrSR)\
           .filterDate(ee.Date.fromYMD(1998,1,1),ee.Date.fromYMD(2003,5,31).advance(1,'day'))\
-        
+
     #Merge collections
     ls = ee.ImageCollection(l4s.merge(l5s).merge(l7s).merge(l8s))
+
+    # Bring in Landsat 9 if using Collection 2
+    if landsatCollectionVersion.lower() == 'c2':
+      l9s = getLandsatCollection(landsatCollectionVersion,'L9',toaOrSR)
+      ls = ee.ImageCollection(ls.merge(l9s))
+
     return ls
 
   ls = getLandsatCollections(toaOrSR,landsatCollectionVersion)
@@ -695,7 +845,7 @@ def getLandsat(studyArea,
               .filterBounds(studyArea)\
               .filter(ee.Filter.lte('WRS_ROW',120))\
               .select(landsatSensorBandNameDict['C1_SRFMASK'])
-              
+
     l5sTOAFMASK = ee.ImageCollection(landsatCollectionDict['C1_L5_SR'])\
               .filterDate(startDate, endDate.advance(1,'day'))\
               .filter(ee.Filter.calendarRange(startJulian, endJulian))\
@@ -709,15 +859,15 @@ def getLandsat(studyArea,
               .filterBounds(studyArea)\
               .filter(ee.Filter.lte('WRS_ROW',120))\
               .select(landsatSensorBandNameDict['C1_SRFMASK'])
-    
-    if includeSLCOffL7: 
+
+    if includeSLCOffL7:
       print('Including All Landsat 7 for TOA QA')
       l7sTOAFMASK = ee.ImageCollection(landsatCollectionDict['C1_L7_SR'])\
               .filterDate(startDate, endDate.advance(1,'day'))\
               .filter(ee.Filter.calendarRange(startJulian, endJulian))\
               .filterBounds(studyArea)\
               .filter(ee.Filter.lte('WRS_ROW',120))\
-              .select(landsatSensorBandNameDict['C1_SRFMASK'])    
+              .select(landsatSensorBandNameDict['C1_SRFMASK'])
     else:
       print('Only including SLC On Landsat 7 for TOA QA');
       l7sTOAFMASK =  ee.ImageCollection(landsatCollectionDict['C1_L7_SR'])\
@@ -727,20 +877,20 @@ def getLandsat(studyArea,
               .filterBounds(studyArea)\
               .filter(ee.Filter.lte('WRS_ROW',120))\
               .select(landsatSensorBandNameDict['C1_SRFMASK'])
-    
+
     lsTOAFMASK = ee.ImageCollection(l4sTOAFMASK.merge(l5sTOAFMASK).merge(l7sTOAFMASK).merge(l8sTOAFMASK))
-    
+
     #Join the TOA with SR QA bands
     print('Joining TOA with SR QA bands')
     #print(ls.size(), lsTOAFMASK.size())
     ls = joinCollections(ls.select([0,1,2,3,4,5,6]), lsTOAFMASK, False, 'system:index')
-    # lsTOAFMASK = getLandsat('SR').select(['pixel_qa']) 
+    # lsTOAFMASK = getLandsat('SR').select(['pixel_qa'])
     # #Join the TOA with SR QA bands
     # print('Joining TOA with SR QA bands')
     # ls = joinCollections(ls.select([0,1,2,3,4,5,6]),lsTOAFMASK)
-    
+
   def dataInAllBands(img):
-    return img.updateMask(img.mask().reduce(ee.Reducer.min()))
+    return img.updateMask(img.select(['blue','green','red','nir','swir1','swir2']).mask().reduce(ee.Reducer.min()))
     # return img.multiply(multImageDict[toaOrSR]).copyProperties(img,['system:time_start']).copyProperties(img)
 
   #Make sure all bands have data
@@ -755,7 +905,7 @@ def getLandsat(studyArea,
   elif resampleMethod == 'aggregate':
     print('Setting to aggregate instead of resample ')
     ls = ls.map(lambda img: img.reduceResolution(ee.Reducer.mean(), true, 64))
-      
+
   return ls.set(args)
 
 getImageCollection = getLandsat
@@ -768,7 +918,7 @@ def rescale(img, thresholds):
 ###########################################################################
 # /***
 #  * Implementation of Basic cloud shadow shift
-#  * 
+#  *
 #  * Author: Gennadii Donchyts
 #  * License: Apache 2.0
 #  */
@@ -783,42 +933,42 @@ def projectShadows(cloudMask,image,irSumThresh,contractPixels,dilatePixels,cloud
   ##################################################
   #print('a',meanAzimuth)
   #print('z',meanZenith)
-  
+
   #Find dark pixels
   darkPixels = image.select(['nir','swir1','swir2']).reduce(ee.Reducer.sum()).lt(irSumThresh)\
     .focal_min(contractPixels).focal_max(dilatePixels)
     #.gte(1)
-  
-  
+
+
   #Get scale of image
   nominalScale = cloudMask.projection().nominalScale()
   #Find where cloud shadows should be based on solar geometry
   #Convert to radians
   azR =ee.Number(meanAzimuth).add(180).multiply(Math.PI).divide(180.0)
   zenR  =ee.Number(meanZenith).multiply(Math.PI).divide(180.0)
-  
-  
+
+
   def castShadows(cloudHeight):
     cloudHeight = ee.Number(cloudHeight)
     shadowCastedDistance = zenR.tan().multiply(cloudHeight)#Distance shadow is cast
     x = azR.sin().multiply(shadowCastedDistance).divide(nominalScale)#X distance of shadow
     y = azR.cos().multiply(shadowCastedDistance).divide(nominalScale).multiply(yMult);#Y distance of shadow
     return cloudMask.changeProj(cloudMask.projection(), cloudMask.projection().translate(x, y))
-    
-    
+
+
   #Find the shadows
   shadows = cloudHeights.map(castShadows)
-  
+
   shadowMask = ee.ImageCollection.fromImages(shadows).max()
-  
+
   #Create shadow mask
   shadowMask = shadowMask.And(cloudMask.Not())
   shadowMask = shadowMask.And(darkPixels).focal_min(contractPixels).focal_max(dilatePixels)
   #Map.addLayer(cloudMask.updateMask(cloudMask),{'min':1,'max':1,'palette':'88F'},'Cloud mask')
   #Map.addLayer(shadowMask.updateMask(shadowMask),{'min':1,'max':1,'palette':'880'},'Shadow mask')
-  
+
   cloudShadowMask = shadowMask.Or(cloudMask)
-  
+
   image = image.updateMask(cloudShadowMask.Not()).addBands(shadowMask.rename(['cloudShadowMask']))
   return image
 
@@ -844,11 +994,11 @@ def projectShadowsWrapper(\
 #Function to mask clouds using the Sentinel-2 QA band.
 def maskS2clouds(image):
   qa = image.select('QA60').int16()
-  
+
   #Bits 10 and 11 are clouds and cirrus, respectively.
   cloudBitMask = Math.pow(2, 10)
   cirrusBitMask = Math.pow(2, 11)
-  
+
   #Both flags should be set to zero, indicating clear conditions.
   mask = qa.bitwiseAnd(cloudBitMask).eq(0).And(\
               qa.bitwiseAnd(cirrusBitMask).eq(0))
@@ -858,22 +1008,22 @@ def maskS2clouds(image):
 
 #########################################################################
 #########################################################################
-#Compute a cloud score and adds a band that represents the cloud mask.  
-#This expects the input image to have the common band names: 
+#Compute a cloud score and adds a band that represents the cloud mask.
+#This expects the input image to have the common band names:
 #["red", "blue", etc], so it can work across sensors.
 def landsatCloudScore(img):
   #Compute several indicators of cloudiness and take the minimum of them.
   score = ee.Image(1.0)
   #Clouds are reasonably bright in the blue band.
   score = score.min(rescale(img.select(['blue']), [0.1, 0.3]))
- 
+
   #Clouds are reasonably bright in all visible bands.
   score = score.min(rescale(img.select(['red','green','blue']).reduce(ee.Reducer.sum()), [0.2, 0.8]))
-   
+
   #Clouds are reasonably bright in all infrared bands.
   score = score.min(rescale(img.select(['swir1','swir2','nir']).reduce(ee.Reducer.sum()), [0.3, 0.8]))
-  
-  
+
+
 
   #Clouds are reasonably cool in temperature.
   score = score.min(rescale(img.select(['temp']), [300, 290]))
@@ -881,10 +1031,10 @@ def landsatCloudScore(img):
   #However, clouds are not snow.
   ndsi = img.normalizedDifference(['green', 'swir1'])
   score = score.min(rescale(ndsi, [0.8, 0.6]))
-  
+
   #ss = snowScore(img).select(['snowScore'])
   #score = score.min(rescale(ss, 'img', [0.3, 0]))
-  
+
   score = score.multiply(100).byte()
   score = score.clamp(0,100)
   return score.rename(['cloudScore'])
@@ -894,21 +1044,21 @@ def landsatCloudScore(img):
 #Wrapper for applying cloudScore function
 def applyCloudScoreAlgorithm(\
     collection,
-    cloudScoreFunction, 
+    cloudScoreFunction,
     cloudScoreThresh = 20,
     cloudScorePctl = 10,
     contractPixels = 1.5,
     dilatePixels = 3.5,
-    performCloudScoreOffset = True, 
+    performCloudScoreOffset = True,
     preComputedCloudScoreOffset = None):
-  
-  #Add cloudScore  
+
+  #Add cloudScore
   def cloudScoreWrapper(img):
     img = ee.Image(img)
-    cs = cloudScoreFunction(img).rename(["cloudScore"]) 
+    cs = cloudScoreFunction(img).rename(["cloudScore"])
     return img.addBands(cs)
   collection = collection.map(cloudScoreWrapper)
- 
+
   if performCloudScoreOffset:
     if preComputedCloudScoreOffset == None:
       #Find low cloud score pctl for each pixel to avoid commission errors
@@ -922,7 +1072,7 @@ def applyCloudScoreAlgorithm(\
     print('Not computing cloudScore offset')
     minCloudScore = ee.Image(0).rename(['cloudScore'])
 
-  
+
   #Apply cloudScore
   def cloudScoreBusterWrapper(img):
     cloudMask = img.select(['cloudScore']).subtract(minCloudScore)\
@@ -937,12 +1087,12 @@ def applyCloudScoreAlgorithm(\
 #########################################################################
 #Functions for applying fmask to SR data
 fmaskBitDict = {'C1':{
-                    'cloud' : 5, 
+                    'cloud' : 5,
                     'shadow': 3,
                     'snow':4
                     },
                 'C2':{
-                    'cloud' : 3, 
+                    'cloud' : 3,
                     'shadow': 4,
                     'snow':5
                   }
@@ -951,8 +1101,8 @@ fmaskBitDict = {'C1':{
 # LSC updated 4/16/19 to add medium and high confidence cloud masks
 # Supported fmaskClass options: 'cloud', 'shadow', 'snow', 'high_confidence_cloud', 'med_confidence_cloud'
 def cFmask(img,fmaskClass,bitMaskBandName = 'QA_PIXEL'):
-  
-  qa = img.select('pixel_qa').int16()
+
+  qa = img.select(bitMaskBandName).uint16()
   if fmaskClass == 'high_confidence_cloud':
      m = qa.bitwiseAnd(1 << 6).neq(0).And(qa.bitwiseAnd(1 << 7).neq(0))
   elif fmaskClass == 'med_confidence_cloud':
@@ -1058,7 +1208,7 @@ def addIndices(img):
       'BLUE': img.select('blue')\
   }).float()
   img = img.addBands(evi.rename('EVI'))
-  
+
   #Add Soil Adjust Vegetation Index (SAVI)
   #using L = 0.5;
   savi = img.expression(\
@@ -1067,7 +1217,7 @@ def addIndices(img):
       'RED': img.select('red')\
   }).float()
   img = img.addBands(savi.rename(['SAVI']))
-  
+
   #Add Index-Based Built-Up Index (IBI)
   ibi_a = img.expression(\
     '2*SWIR1/(SWIR1 + NIR)', {\
@@ -1086,7 +1236,7 @@ def addIndices(img):
   ibi_a = ibi_a.addBands(ibi_b)
   ibi = ibi_a.normalizedDifference(['IBI_A','IBI_B'])
   img = img.addBands(ibi.rename(['IBI']))
-  
+
   return img
 #########################################################################
 #########################################################################
@@ -1100,7 +1250,7 @@ def addSAVIandEVI(img):
       'BLUE': img.select('blue')\
   }).float()
   img = img.addBands(evi.rename(['EVI']))
-  
+
   #Add Soil Adjust Vegetation Index (SAVI)
   #using L = 0.5
   savi = img.expression(\
@@ -1109,7 +1259,7 @@ def addSAVIandEVI(img):
       'RED': img.select('red')\
   }).float()
 
-  
+
   #########################################################################
   #NIRv: Badgley, G., Field, C. B., & Berry, J. A. (2017). Canopy near-infrared reflectance and terrestrial photosynthesis. Science Advances, 3, e1602244.
   #https://www.researchgate.net/publication/315534107_Canopy_near-infrared_reflectance_and_terrestrial_photosynthesis
@@ -1124,12 +1274,12 @@ def addSAVIandEVI(img):
 ###############################################################
 #Apply bloom detection algorithm
 def HoCalcAlgorithm2(image):
-  # Algorithm 2 based on: 
-  # Matthews, M. (2011) A current review of empirical procedures 
-  #  of remote sensing in inland and near-coastal transitional 
-  #  waters, International Journal of Remote Sensing, 32:21, 
+  # Algorithm 2 based on:
+  # Matthews, M. (2011) A current review of empirical procedures
+  #  of remote sensing in inland and near-coastal transitional
+  #  waters, International Journal of Remote Sensing, 32:21,
   #  6855-6899, DOI: 10.1080/01431161.2010.512947
-  
+
   # Apply algorithm 2: B2/B1
   bloom2 = image.select('green')\
               .divide(image.select('blue'))\
@@ -1144,7 +1294,7 @@ def simpleAddIndices(in_image):
   in_image = in_image.addBands(in_image.normalizedDifference(['nir', 'swir2']).select([0],['NBR']))
   in_image = in_image.addBands(in_image.normalizedDifference(['nir', 'swir1']).select([0],['NDMI']))
   in_image = in_image.addBands(in_image.normalizedDifference(['green', 'swir1']).select([0],['NDSI']))
-  
+
   return in_image
 
 #########################################################################
@@ -1155,7 +1305,7 @@ def addSoilIndices(img):
   img = img.addBands(img.normalizedDifference(['red','green']).rename(['NDCI']))
   img = img.addBands(img.normalizedDifference(['red','swir2']).rename(['NDII']))
   img = img.addBands(img.normalizedDifference(['swir1','nir']).rename(['NDFI']))
-  
+
   bsi = img.expression(\
   '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))', {\
     'BLUE': img.select('blue'),\
@@ -1165,22 +1315,22 @@ def addSoilIndices(img):
   }).float()
 
   img = img.addBands(bsi.rename(['BSI']))
-  
+
   hi = img.expression(\
     'SWIR1 / SWIR2',{\
       'SWIR1': img.select('swir1'),\
       'SWIR2': img.select('swir2')\
     }).float()
-  img = img.addBands(hi.rename(['HI'])).float()  
+  img = img.addBands(hi.rename(['HI'])).float()
   return img
 
 #########################################################################
 #########################################################################
 #Function to compute the Tasseled Cap transformation and return an image
-#with the following bands added: ['brightness', 'greenness', 'wetness', 
+#with the following bands added: ['brightness', 'greenness', 'wetness',
 #'fourth', 'fifth', 'sixth']
 def getTasseledCap(image):
-   
+
   bands = ee.List(['blue','green','red','nir','swir1','swir2'])
   #   // // Kauth-Thomas coefficients for Thematic Mapper data
   #   // var coefficients = ee.Array([
@@ -1191,7 +1341,7 @@ def getTasseledCap(image):
   #   //   [-0.3280, 0.0549, 0.1075, 0.1855, -0.4357, 0.8085],
   #   //   [0.1084, -0.9022, 0.4120, 0.0573, -0.0251, 0.0238]
   #   // ]);
-    
+
   #Crist 1985 coeffs - TOA refl (http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf)
   coefficients = ee.Array([[0.2043, 0.4158, 0.5524, 0.5741, 0.3124, 0.2303],\
                       [-0.1603, -0.2819, -0.4934, 0.7940, -0.0002, -0.1446],\
@@ -1201,20 +1351,20 @@ def getTasseledCap(image):
                      [0.3677, -0.8200, 0.4354, 0.0518, -0.0066, -0.0104]])
   #Make an Array Image, with a 1-D Array per pixel.
   arrayImage1D = image.select(bands).toArray()
-  
+
   #Make an Array Image with a 2-D Array per pixel, 6x1.
   arrayImage2D = arrayImage1D.toArray(1)
-  
+
   componentsImage = ee.Image(coefficients).matrixMultiply(arrayImage2D)\
   .arrayProject([0])\
   .arrayFlatten([['brightness', 'greenness', 'wetness', 'fourth', 'fifth', 'sixth']]).float()
-  
+
   return image.addBands(componentsImage)
 
 #########################################################################
 #########################################################################
 def simpleGetTasseledCap(image):
- 
+
   bands = ee.List(['blue','green','red','nir','swir1','swir2'])
   #   // // Kauth-Thomas coefficients for Thematic Mapper data
   #   // var coefficients = ee.Array([
@@ -1225,21 +1375,21 @@ def simpleGetTasseledCap(image):
   #   //   [-0.3280, 0.0549, 0.1075, 0.1855, -0.4357, 0.8085],
   #   //   [0.1084, -0.9022, 0.4120, 0.0573, -0.0251, 0.0238]
   #   // ]);
-    
+
   #Crist 1985 coeffs - TOA refl (http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf)
   coefficients = ee.Array([[0.2043, 0.4158, 0.5524, 0.5741, 0.3124, 0.2303],\
                       [-0.1603, -0.2819, -0.4934, 0.7940, -0.0002, -0.1446],\
                       [0.0315, 0.2021, 0.3102, 0.1594, -0.6806, -0.6109]])
   #Make an Array Image, with a 1-D Array per pixel.
   arrayImage1D = image.select(bands).toArray()
-  
+
   #Make an Array Image with a 2-D Array per pixel, 6x1.
   arrayImage2D = arrayImage1D.toArray(1)
-  
+
   componentsImage = ee.Image(coefficients).matrixMultiply(arrayImage2D)\
   .arrayProject([0])\
   .arrayFlatten([['brightness', 'greenness', 'wetness']]).float()
-  
+
   return image.addBands(componentsImage)
 
 #########################################################################
@@ -1251,7 +1401,7 @@ def addTCAngles(image):
   brightness = image.select(['brightness'])
   greenness = image.select(['greenness'])
   wetness = image.select(['wetness'])
-  
+
   #Calculate Tasseled Cap angles and distances
   tcAngleBG = brightness.atan2(greenness).divide(math.pi).rename(['tcAngleBG'])
   tcAngleGW = greenness.atan2(wetness).divide(math.pi).rename(['tcAngleGW'])
@@ -1273,10 +1423,10 @@ def simpleAddTCAngles(image):
   brightness = image.select(['brightness'])
   greenness = image.select(['greenness'])
   wetness = image.select(['wetness'])
-  
+
   #Calculate Tasseled Cap angles and distances
   tcAngleBG = brightness.atan2(greenness).divide(math.pi).rename(['tcAngleBG'])
-  
+
   return image.addBands(tcAngleBG)
 
 #########################################################################
@@ -1287,53 +1437,50 @@ def addZenithAzimuth(
     toaOrSR,
     zenithDict = {'TOA': 'SUN_ELEVATION','SR': 'SOLAR_ZENITH_ANGLE'},
     azimuthDict = {'TOA': 'SUN_AZIMUTH','SR': 'SOLAR_AZIMUTH_ANGLE'}):
-   
+
   zenith = ee.Image.constant(img.get(zenithDict[toaOrSR]))\
           .multiply(math.pi).divide(180).float().rename(['zenith'])
-  
+
   azimuth = ee.Image.constant(img.get(azimuthDict[toaOrSR]))\
           .multiply(math.pi).divide(180).float().rename(['azimuth'])
-    
+
   return img.addBands(zenith).addBands(azimuth)
 
 #########################################################################
 #########################################################################
 #Function for computing the mean squared difference medoid from an image collection
+# As the data are not normalized in this method, ensuring the medoidIncludeBands have roughly comparable ranges of values
+# helps the function work properly. For example, if temperature is included, it will account for most of the variance
+# thus resulting in a medoid mosaic that will more or less choose values closest to the median temperature only, rather than
+# all the bands
 def medoidMosaicMSD(inCollection, medoidIncludeBands = None):
-  #Find band names in first image
-  f = ee.Image(inCollection.first())
-  bandNames = f.bandNames()
-  
+
   if medoidIncludeBands == None:
-    medoidIncludeBands = bandNames
+    medoidIncludeBands = ee.Image(inCollection.first()).bandNames()
 
   #Find the median
   median = inCollection.select(medoidIncludeBands).median()
-  
+
   #Find the squared difference from the median for each image
+  # Multiply by -1 so quality mosaic function can be used
   def msdGetter(img):
-    diff = ee.Image(img).select(medoidIncludeBands).subtract(median).pow(ee.Image.constant(2))
+    diff = ee.Image(img).select(medoidIncludeBands).subtract(median).pow(2)
     img = addYearBand(img)
     img = addJulianDayBand(img)
-    return diff.reduce('sum').addBands(img)
+    return diff.reduce('sum').multiply(-1).addBands(img)
   medoid = inCollection.map(msdGetter)
 
-  bandNames = bandNames.cat(['year','julianDay'])
-  bandNumbers = ee.List.sequence(1,bandNames.length())
+  #Minimize the distance across all bands by finding the pixels that correspond to the minimum distance (multiplied by -1 above)
+  medoid = medoid.qualityMosaic('sum')
+  medoid = medoid.select(medoid.bandNames().remove('sum'))
 
-  #Minimize the distance across all bands
-  medoid = ee.ImageCollection(medoid)\
-    .reduce(ee.Reducer.min(bandNames.length().add(1)))\
-    .select(bandNumbers,bandNames)
   return medoid
-
-
 #########################################################################
 #########################################################################
 #Function to export a provided image to an EE asset
 # For earthengine-api version 0.1.226
 # There was an issue with the region with this new version.
-#From earthengine-api batch.Export.toAsset documentation: "region: The lon,lat coordinates for a LinearRing or Polygon specifying the region to export. 
+#From earthengine-api batch.Export.toAsset documentation: "region: The lon,lat coordinates for a LinearRing or Polygon specifying the region to export.
 #     Can be specified as a nested lists of numbers or a serialized string. Defaults to the image's region."
 def exportToAssetWrapper(imageForExport,assetName,assetPath,pyramidingPolicyObject = None,roi= None,scale= None,crs = None,transform = None):
   #Get rid of any spaces
@@ -1350,28 +1497,28 @@ def exportToAssetWrapper(imageForExport,assetName,assetPath,pyramidingPolicyObje
     outRegion = roi.bounds(100,crs)
   else:
     outRegion = None
-  
+
 
   if transform != None and (str(type(transform)) == "<type 'list'>" or str(type(transform)) == "<class 'list'>"):
     transform = str(transform)
-  
+
   if pyramidingPolicyObject == None:
     pyramidingPolicyObject = {'.default':'mean'}
   elif type(pyramidingPolicyObject) == str:
     pyramidingPolicyObject = {'.default': pyramidingPolicyObject}
   # pyramidingPolicyObject = json.dumps(pyramidingPolicyObject)
   print('pyramiding object:',pyramidingPolicyObject)
-  
+
   # LSC 1/6/20 was getting error: "ee.ee_exception.EEException: JSON provided for reductionPolicy must be an object." Getting rid of json.dumps() seemed to fix the problem
-  t = ee.batch.Export.image.toAsset(imageForExport, 
-                    description = assetName, 
-                    assetId = assetPath, 
-                    pyramidingPolicy = pyramidingPolicyObject, 
-                    dimensions = None, 
-                    region = None, 
-                    scale = scale, 
-                    crs = crs, 
-                    crsTransform = transform, 
+  t = ee.batch.Export.image.toAsset(imageForExport,
+                    description = assetName,
+                    assetId = assetPath,
+                    pyramidingPolicy = pyramidingPolicyObject,
+                    dimensions = None,
+                    region = None,
+                    scale = scale,
+                    crs = crs,
+                    crsTransform = transform,
                     maxPixels = 1e13)
   print('Exporting:',assetName)
   print(t)
@@ -1394,11 +1541,11 @@ def exportToDriveWrapper(imageForExport,outputName,driveFolderName,roi,scale= No
 
   if transform != None and (str(type(transform)) == "<type 'list'>" or str(type(transform)) == "<class 'list'>"):
     transform = str(transform)
- 
- 
+
+
   #Ensure bounds are in export projection
   outRegion = roi.bounds(100,crs)
-  
+
   # Map.addLayer(imageForExport,{},outputName,False)
   t = ee.batch.Export.image.toDrive(imageForExport, outputName, driveFolderName, outputName, None, outRegion, scale, crs, transform, 1e13)
   print('Exporting:',outputName)
@@ -1418,8 +1565,8 @@ def exportToCloudStorageWrapper(imageForExport,outputName,bucketName,roi,scale= 
 
   if transform != None and (str(type(transform)) == "<type 'list'>" or str(type(transform)) == "<class 'list'>"):
     transform = str(transform)
- 
- 
+
+
   #Ensure bounds are in export projection
   outRegion = roi.bounds(100,crs)
 
@@ -1443,7 +1590,7 @@ def wrapDates(startJulian,endJulian):
     y2NDays = endJulian
     if y2NDays > y1NDays:
       yearWithMajority = 1
-  
+
   return [wrapOffset,yearWithMajority]
 
 #########################################################################
@@ -1459,33 +1606,33 @@ def compositeTimeSeries(
       weights = [1],
       compositingMethod = None,
       compositingReducer = None):
-  
+
   args = formatArgs(locals())
   if 'args' in args.keys():
     del args['args']
 
   dummyImage = ee.Image(ls.first())
-  
+
   dateWrapping = wrapDates(startJulian,endJulian)
   wrapOffset = dateWrapping[0]
   yearWithMajority = dateWrapping[1]
-  
 
-  
+
+
   def yearCompositeGetter(year):
-   
+
     #Set up dates
     startYearT = year-timebuffer
     endYearT = year+timebuffer
     startDateT = ee.Date.fromYMD(startYearT,1,1).advance(startJulian-1,'day')
     endDateT = ee.Date.fromYMD(endYearT,1,1).advance(endJulian-1+wrapOffset,'day')
- 
-  
+
+
     #print(year,startDateT,endDateT)
-    
+
     #Set up weighted moving widow
     yearsT = ee.List.sequence(startYearT,endYearT)
-    
+
     def zipper(i):
       i = ee.List(i)
       return ee.List.repeat(i.get(0),i.get(1))
@@ -1495,7 +1642,7 @@ def compositeTimeSeries(
     yearsTT = z.map(zipper).flatten()
 
     # print('Weighted composite years for year:',year,yearsTT.getInfo())
-    
+
     #Iterate across each year in list
     def yrGetter(yr):
       #Set up dates
@@ -1506,9 +1653,9 @@ def compositeTimeSeries(
       lsT = ls.filterDate(startDateT,endDateT.advance(1,'day'))
       lsT = fillEmptyCollections(lsT,dummyImage)
       return lsT
-    images = yearsTT.map(yrGetter)    
+    images = yearsTT.map(yrGetter)
     lsT = ee.ImageCollection(ee.FeatureCollection(images).flatten())
-   
+
     count = lsT.select([0]).count().rename(['compositeObsCount'])
     #Compute median or medoid or apply reducer
     if compositingReducer != None:
@@ -1532,37 +1679,37 @@ def compositeTimeSeries(
   #Iterate across each year
   ts = [yearCompositeGetter(yr) for yr in ee.List.sequence(startYear+timebuffer,endYear-timebuffer).getInfo()]
   ts = ee.ImageCollection(ts).set(args)
-  
+
   return ts
 
 # ////////////////////////////////////////////////////////////////////////////////
-# Function to calculate illumination condition (IC). Function by Patrick Burns 
-# (pb463@nau.edu) and Matt Macander 
+# Function to calculate illumination condition (IC). Function by Patrick Burns
+# (pb463@nau.edu) and Matt Macander
 # (mmacander@abrinc.com)
 def illuminationCondition(img):
   # Extract solar zenith and azimuth bands
   SZ_rad = img.select('zenith')
   SA_rad = img.select('azimuth')
-  
+
   # Creat terrain layers
   # dem = ee.Image('CGIAR/SRTM90_V4')
   dem = ee.Image('USGS/NED')
   slp = ee.Terrain.slope(dem)
   slp_rad = ee.Terrain.slope(dem).multiply(math.pi).divide(180)
   asp_rad = ee.Terrain.aspect(dem).multiply(math.pi).divide(180)
-  
+
   # Calculate the Illumination Condition (IC)
   # slope part of the illumination condition
   cosZ = SZ_rad.cos()
   cosS = slp_rad.cos()
-  slope_illumination = cosS.expression("cosZ * cosS", 
+  slope_illumination = cosS.expression("cosZ * cosS",
                                           {'cosZ': cosZ,
                                            'cosS': cosS.select('slope')})
   # aspect part of the illumination condition
-  sinZ = SZ_rad.sin() 
+  sinZ = SZ_rad.sin()
   sinS = slp_rad.sin()
   cosAziDiff = (SA_rad.subtract(asp_rad)).cos()
-  aspect_illumination = sinZ.expression("sinZ * sinS * cosAziDiff", 
+  aspect_illumination = sinZ.expression("sinZ * sinS * cosAziDiff",
                                            {'sinZ': sinZ,
                                             'sinS': sinS,
                                             'cosAziDiff': cosAziDiff})
@@ -1576,8 +1723,8 @@ def illuminationCondition(img):
             .addBands(slp.rename('slope'))
 
 ########################################
-# Function to apply the Sun-Canopy-Sensor + C (SCSc) correction method to each 
-# image. Function by Patrick Burns (pb463@nau.edu) and Matt Macander 
+# Function to apply the Sun-Canopy-Sensor + C (SCSc) correction method to each
+# image. Function by Patrick Burns (pb463@nau.edu) and Matt Macander
 # (mmacander@s.com)
 def  illuminationCorrection(img, scale,studyArea, bandList = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'temp']):
 
@@ -1588,18 +1735,18 @@ def  illuminationCorrection(img, scale,studyArea, bandList = ['blue', 'green', '
                     .And(img_plus_ic.select('IC').gte(0))\
                     .And(img_plus_ic.select('nir').gt(-0.1))
   img_plus_ic_mask2 = ee.Image(img_plus_ic.updateMask(mask2))
-  
-  # Specify Bands to topographically correct  
+
+  # Specify Bands to topographically correct
   compositeBands = img.bandNames()
   nonCorrectBands = img.select(compositeBands.removeAll(bandList))
-  
+
   def apply_SCSccorr(bandList):
     method = 'SCSc'
     out = img_plus_ic_mask2.select('IC', bandList).reduceRegion(**{
       'reducer': ee.Reducer.linearFit(),
       'geometry': studyArea,
       'scale': scale,
-      'maxPixels': 1e13}) 
+      'maxPixels': 1e13})
 
     out_a = ee.Number(out.get('scale'))
     out_b = ee.Number(out.get('offset'))
@@ -1613,14 +1760,14 @@ def  illuminationCorrection(img, scale,studyArea, bandList = ['blue', 'green', '
       'cosZ': img_plus_ic_mask2.select('cosZ'),
       'cvalue': out_c\
     })
-    
+
     return SCSc_output
-  
+
   img_SCSccorr = ee.Image(bandList.map(apply_SCSccorr))\
                       .addBands(img_plus_ic.select('IC'))
   bandList_IC = ee.List([bandList, 'IC']).flatten()
   img_SCSccorr = img_SCSccorr.unmask(img_plus_ic.select(bandList_IC)).select(bandList)
-  
+
   return img_SCSccorr.addBands(nonCorrectBands)\
                       .setMulti(props)\
                       .set('system:time_start',st)
@@ -1636,19 +1783,19 @@ def maskEmptyPixels(image):
 #########################################################################
 #########################################################################
 # A function that returns an image containing just the specified QA bits.
-# 
+#
 # Args:
 #   image - The QA Image to get bits from.
 #   start - The first bit position, 0-based.
 #   end   - The last bit position, inclusive.
 #   name  - A name for the output image.
- 
+
 def getQABits(image, start, end, newName):
   #Compute the bits we need to extract.
   pattern = 0
   for i in range(start,end+1):
     pattern += math.pow(2, i)
-  
+
   #Return a single band image of the extracted QA bits, giving the band a new name.
   return image.select([0], [newName]).bitwiseAnd(pattern).rightShift(start)
 
@@ -1825,7 +1972,7 @@ def joinCollections(c1, c2, maskAnyNullValues = True, joinProperty = 'system:tim
   join = ee.Join.inner()
   joinFilter = ee.Filter.equals(joinProperty, None, joinProperty)
   joined = ee.ImageCollection(join.apply(c1, c2, joinFilter))
-     
+
   joined = ee.ImageCollection(joined.map(MergeBands))
   if maskAnyNullValues:
     def nuller(img):
@@ -1836,7 +1983,7 @@ def joinCollections(c1, c2, maskAnyNullValues = True, joinProperty = 'system:tim
 
 def smartJoin(primary,secondary,hourDiff):
   millis = hourDiff * 60 * 60 * 1000
-  
+
   #Create a time filter to define a match as overlapping timestamps.
   maxDiffFilter = ee.Filter.maxDifference({\
     'difference': millis,\
@@ -1852,7 +1999,7 @@ def smartJoin(primary,secondary,hourDiff):
     #A function to merge the bands together.
     #After a join, results are in 'primary' and 'secondary' properties.
     return ee.Image.cat(element, element.get('bestImage'))
-      
+
   #Apply the join.
   joined = saveBestJoin.apply(primary, secondary, maxDiffFilter)
   joined = joined.map(MergeBands)
@@ -1861,7 +2008,7 @@ def smartJoin(primary,secondary,hourDiff):
 #Join collections by space (intersection) and time (specified by user)
 def spatioTemporalJoin(primary, secondary, hourDiff = 24, outKey = 'secondary'):
   time = hourDiff* 60 * 60 * 1000
-  
+
   outBns = ee.Image(secondary.first()).bandNames().map(lambda bn: ee.String(bn).cat('_').cat(outKey))
   #Define a spatial filter as geometries that intersect.
   spatioTemporalFilter = ee.Filter.And(\
@@ -1881,7 +2028,7 @@ def spatioTemporalJoin(primary, secondary, hourDiff = 24, outKey = 'secondary'):
     'matchKey': outKey,\
     'measureKey': 'timeDiff'\
   })
-  
+
   #Apply the join.
   joined = saveBestJoin.apply(primary, secondary, spatioTemporalFilter)
   def MergeBands(element):
@@ -1898,11 +2045,11 @@ def spatioTemporalJoin(primary, secondary, hourDiff = 24, outKey = 'secondary'):
 def joinFeatureCollections(primary,secondary,fieldName):
   # Use an equals filter to specify how the collections match.
   f = ee.Filter.equals(fieldName,None,fieldName)
-  
-  
+
+
   # Define the join.
   innerJoin = ee.Join.inner('primary', 'secondary')
-  
+
   # Apply the join.
   joined = innerJoin.apply(primary, secondary, f)
   joined = joined.map(lambda f: ee.Feature(f.get('primary')).copyProperties(ee.Feature(f.get('secondary'))))
@@ -1913,24 +2060,24 @@ def joinFeatureCollections(primary,secondary,fieldName):
 #Method for removing spikes in time series
 def despikeCollection(c, absoluteSpike, bandNo):
   c = c.toList(10000,0)
-  
+
   #Get book ends for adding back at the end
   first = c.slice(0,1)
   last = c.slice(-1,None)
-  
+
   #Slice the left, center, and right for the moving window
   left = c.slice(0,-2)
   center = c.slice(1,-1)
   right = c.slice(2,None)
-  
+
   #Find how many images there are to compare
   seq = ee.List.sequence(0,left.length().subtract(1))
-  
+
   #Compare the center to the left and right images
   def compare(i):
     lt = ee.Image(left.get(i))
     rt = ee.Image(right.get(i))
-    
+
     ct = ee.Image(center.get(i));
     time_start = ct.get('system:time_start')
     time_end = ct.get('system:time_end')
@@ -1944,18 +2091,18 @@ def despikeCollection(c, absoluteSpike, bandNo):
     highSpike = diff1.gt(absoluteSpike).And(diff2.gt(absoluteSpike))
     lowSpike = diff1.lt(- absoluteSpike).And(diff2.lt(- absoluteSpike))
     BinarySpike = highSpike.Or(lowSpike)
-    
+
     originalMask = ct.mask()
     ct = ct.mask(BinarySpike.eq(0))
-    
+
     doNotMask = lt.mask().Not().Or(rt.mask().Not())
     lrMean = lt.add(rt)
     lrMean = lrMean.divide(2)
     #out = ct.mask(doNotMask.Not().And(ct.mask()))
     out = ct.where(BinarySpike.eq(1).And(doNotMask.Not()),lrMean)
     return out.set('system:index',si).set('system:time_start', time_start).set('system:time_end', time_end)
-    
-    
+
+
   outCollection = seq.map(compare)
 
   #Add the bookends back on
@@ -1967,7 +2114,7 @@ def despikeCollection(c, absoluteSpike, bandNo):
 #Function to get MODIS data from various collections
 #Will pull from daily or 8-day composite collections based on the boolean variable "daily"
 def getModisData(startYear,endYear,startJulian,endJulian,daily = False,maskWQA = False,zenithThresh = 90,useTempInCloudMask = True,addLookAngleBands = False,resampleMethod = 'near'):
-  
+
   #Find which collections to pull from based on daily or 8-day
   if daily == False:
     a250C = modisCDict['eightDaySR250A']
@@ -1986,7 +2133,7 @@ def getModisData(startYear,endYear,startJulian,endJulian,daily = False,maskWQA =
     t1000C = modisCDict['dailyLST1000T']
     viewAngleBandNames = dailyViewAngleBandNames;
 
-  #Pull images from each of the collections  
+  #Pull images from each of the collections
   a250 = ee.ImageCollection(a250C)\
     .filter(ee.Filter.calendarRange(startYear,endYear,'year'))\
     .filter(ee.Filter.calendarRange(startJulian,endJulian))\
@@ -2005,7 +2152,7 @@ def getModisData(startYear,endYear,startJulian,endJulian,daily = False,maskWQA =
           .filter(ee.Filter.calendarRange(startJulian,endJulian))
     def applyZenith(img):
       img = img.mask(img.mask().And(img.select(['SensorZenith']).lt(zenithThresh*100)))
-      if maskWQA:img = maskCloudsWQA(img)            
+      if maskWQA:img = maskCloudsWQA(img)
       return img
     #Mask pixels above a certain zenith
     if daily:
@@ -2016,31 +2163,31 @@ def getModisData(startYear,endYear,startJulian,endJulian,daily = False,maskWQA =
       images = images.select(ee.List(modis500SelectBands).cat(viewAngleBandNames),ee.List(modis500BandNames).cat(viewAngleBandNames));
     else:
       images = images.select(modis500SelectBands,modis500BandNames)
-              
+
     return images
-    
-    
+
+
   a500 = get500(a500C)
   t500 = get500(t500C)
 
-  
+
   #If thermal collection is wanted, pull it as well
   if useTempInCloudMask:
     t1000 = ee.ImageCollection(t1000C)\
             .filter(ee.Filter.calendarRange(startYear,endYear,'year'))\
             .filter(ee.Filter.calendarRange(startJulian,endJulian))\
             .select([0,8,9],['temp','Emis_31','Emis_32']);
-          
+
     a1000 = ee.ImageCollection(a1000C)\
             .filter(ee.Filter.calendarRange(startYear,endYear,'year'))\
             .filter(ee.Filter.calendarRange(startJulian,endJulian))\
             .select([0,8,9],['temp','Emis_31','Emis_32']);
-   
+
 
   #Now all collections are pulled, start joining them
   #First join the 250 and 500 m Aqua
   a = joinCollections(a250,a500,False)
-    
+
   #Then Terra
   t = joinCollections(t250,t500,False)
 
@@ -2053,32 +2200,32 @@ def getModisData(startYear,endYear,startJulian,endJulian,daily = False,maskWQA =
 
   #   tSelectOrder = wTempSelectOrder
   #   tStdNames = wTempStdNames
-  
+
   # #If no thermal was pulled, leave that out
   # else:
   #   tSelectOrder = woTempSelectOrder
   #   tStdNames = woTempStdNames
-  
+
   a = a.map(lambda img:img.set({'platform':'aqua'}));
   t = t.map(lambda img:img.set({'platform':'terra'}));
-  
-  
+
+
   if(daily):dailyPiece = 'Daily'
   else:dailyPiece = 'Composite'
-    
+
   if(useTempInCloudMask):tempPiece = 'temp'
   else:tempPiece = 'noTemp'
   if addLookAngleBands:anglePiece = 'Angle'
   else:anglePiece = 'NoAngle'
   multKey = tempPiece+anglePiece+dailyPiece
-  
+
   mult = multModisDict[multKey]
   multImage = mult[0]
   multNames = mult[1]
-  
-  #Join Terra and Aqua 
+
+  #Join Terra and Aqua
   joined = ee.ImageCollection(a.merge(t))#.select(tSelectOrder,tStdNames)
-  
+
   def multiplyImg(img):
     return img.multiply(multImage).float().select(multNames)\
         .copyProperties(img,['system:time_start','system:time_end','system:index'])\
@@ -2091,7 +2238,7 @@ def getModisData(startYear,endYear,startJulian,endJulian,daily = False,maskWQA =
     print('Setting resample method to ',resampleMethod)
     joined = joined.map(setResample)
   return joined
-    
+
 
 #Function to get cloud, cloud shadow busted modis images
 #Takes care of matching different modis collections as well
@@ -2124,7 +2271,7 @@ def getProcessedModis(startYear,
   args = formatArgs(locals())
   if 'args' in args.keys():
     del args['args']
-  
+
   #Get joined modis collection
   modisImages = getModisData(startYear,endYear,startJulian,endJulian,
     daily = True,
@@ -2147,13 +2294,13 @@ def getProcessedModis(startYear,
       Map.addLayer(modisImages.min().reproject(crs,transform,scale),vizParamsFalse,'Cloud Masked Min',False)
 
   if applyTDOM:
-    print('Applying TDOM') 
+    print('Applying TDOM')
     #Find and mask out dark outliers
     modisImages = simpleTDOM2(modisImages,zScoreThresh,shadowSumThresh,contractPixels,dilatePixels,shadowSumBands,preComputedTDOMIRMean,preComputedTDOMIRStdDev)
 
     if addToMap:
       Map.addLayer(modisImages.median().reproject(crs,transform,scale),vizParamsFalse,'Cloud/Cloud Shadow Masked Median',False)
-      Map.addLayer(modisImages.min().reproject(crs,transform,scale),vizParamsFalse,'Cloud/Cloud Shadow Masked Min',False) 
+      Map.addLayer(modisImages.min().reproject(crs,transform,scale),vizParamsFalse,'Cloud/Cloud Shadow Masked Min',False)
 
   modisImages = modisImages.map(simpleAddIndices)
   modisImages = modisImages.map(lambda img: img.float())
@@ -2161,7 +2308,7 @@ def getProcessedModis(startYear,
 #########################################################################
 #Function to take images and create a median composite every n days
 def nDayComposites(images,startYear,endYear,startJulian,endJulian,compositePeriod):
-  
+
   #create dummy image for with no values
   dummyImage = ee.Image(images.first())
 
@@ -2171,7 +2318,7 @@ def nDayComposites(images,startYear,endYear,startJulian,endJulian,compositePerio
     yr = ee.Number(yr).int16()
     #filter out images for the year
     yrImages = images.filter(ee.Filter.calendarRange(yr,yr,'year'))
-  
+
     #use dummy image to fill in gaps for GEE processing
     yrImages = fillEmptyCollections(yrImages,dummyImage)
     return yrImages
@@ -2203,53 +2350,53 @@ def nDayComposites(images,startYear,endYear,startJulian,endJulian,compositePerio
 ###############################################################
 #########################################################################
 def exportCollection(exportPathRoot,outputName,studyArea, crs,transform,scale,collection,startYear,endYear,startJulian,endJulian,compositingReducer,timebuffer,exportBands):
-  
+
   #Take care of date wrapping
   dateWrapping = wrapDates(startJulian,endJulian)
   wrapOffset = dateWrapping[0]
   yearWithMajority = dateWrapping[1]
-  
+
   #Clean up output name
   outputName = outputName.replace('/\s+/g','-')
   outputName = outputName.replace('/\//g','-')
-  
+
   #Select bands for export
   collection = collection.select(exportBands)
-  
+
   #Iterate across each year and export image
   for year in ee.List.sequence(startYear+timebuffer,endYear-timebuffer).getInfo():
     print('Exporting:',year)
     #Set up dates
     startYearT = year-timebuffer
     endYearT = year+timebuffer+yearWithMajority
-    
+
     #Get yearly composite
     composite = collection.filter(ee.Filter.calendarRange(year+yearWithMajority,year+yearWithMajority,'year'))
     composite = ee.Image(composite.first()).clip(studyArea)
-    
+
     #Add metadata, cast to integer, and export composite
     composite = composite.set({\
       'system:time_start': ee.Date.fromYMD(year+yearWithMajority,6,1).millis(),\
       'yearBuffer':timebuffer\
     })
-  
-    #Export the composite 
+
+    #Export the composite
     #Set up export name and path
     exportName = outputName  +'_'  + str(int(startYearT)) + '_' + str(int(endYearT))+'_' + str(int(startJulian)) + '_' + str(int(endJulian))
-   
+
     exportPath = exportPathRoot + '/' + exportName
-   
+
     exportToAssetWrapper(composite,exportName,exportPath,'mean',studyArea,scale,crs,transform);
-    
+
 #########################################################################
 #########################################################################
 #Function to export composite collection
 def exportCompositeCollection(
   collection,
-  exportPathRoot, 
+  exportPathRoot,
   outputName,
   origin,
-  studyArea, 
+  studyArea,
   crs,
   transform,
   scale,
@@ -2280,20 +2427,20 @@ def exportCompositeCollection(
     #Set up dates
     startYearT = year-timebuffer
     endYearT = year+timebuffer+yearWithMajority
-    
+
     #Get yearly composite
     composite = collection.filter(ee.Filter.calendarRange(year+yearWithMajority, year+yearWithMajority, 'year'))
     composite = ee.Image(composite.first())
-  
+
     #Reformat data for export
     compositeBands = composite.bandNames()
     if nonDivideBands != None:
       composite10k = composite.select(compositeBands.removeAll(nonDivideBands)).multiply(10000)
       composite = composite10k.addBands(composite.select(nonDivideBands)).select(compositeBands).int16()
-    
+
     else:
       composite = composite.multiply(10000).int16()
-    
+
     startYearComposite = startYearT
     endYearComposite = endYearT
     systemTimeStartYear = year+yearWithMajority
@@ -2302,20 +2449,20 @@ def exportCompositeCollection(
     # args['system:time_start'] = ee.Date.fromYMD(systemTimeStartYear, 6, 1).millis()
 
     composite = composite.set(formatArgs(args))
-    
+
     composite = composite.set('system:time_start',ee.Date.fromYMD(systemTimeStartYear, 6, 1).millis())
-    
+
     if additionalPropertyDict != None:
       if 'args' in additionalPropertyDict.keys():
         del additionalPropertyDict['args']
       composite = composite.set(formatArgs(additionalPropertyDict))
 
-    #Export the composite 
+    #Export the composite
     #Set up export name and path
     exportName = outputName  + '_' + toaOrSR + '_' + compositingMethod + '_'  + str(int(startYearT)) + '_' + str(int(endYearT))+'_' + str(int(startJulian)) + '_' + str(int(endJulian))
     exportPath = exportPathRoot+'/'+exportName
 
-    
+
     exportToAssetWrapper(\
       imageForExport = composite,
       assetName = exportName,
@@ -2325,7 +2472,7 @@ def exportCompositeCollection(
       scale= scale,
       crs = crs,
       transform = transform)
-    
+
 
 #########################################################################
 #########################################################################
@@ -2369,7 +2516,7 @@ def getLandsatWrapper(
   compositingReducer = None,
   harmonizeOLI = False,
   landsatCollectionVersion = 'C2'):
-  
+
   toaOrSR = toaOrSR.upper()
   origin = 'Landsat'
   args = formatArgs(locals())
@@ -2379,7 +2526,7 @@ def getLandsatWrapper(
   #Prepare dates
   wrapOffset = 0
   if startJulian > endJulian:
-    wrapOffset = 365  
+    wrapOffset = 365
   startDate = ee.Date.fromYMD(startYear,1,1).advance(startJulian-1,'day')
   endDate = ee.Date.fromYMD(endYear,1,1).advance(endJulian-1+wrapOffset,'day')
 
@@ -2416,7 +2563,7 @@ def getLandsatWrapper(
   if correctIllumination:
     print('Adding zenith and azimuth for terrain correction')
     ls = ls.map(lambda img: addZenithAzimuth(img, toaOrSR))
-  
+
   #Create composite time series
   ts = compositeTimeSeries(\
     ls = ls,
@@ -2428,7 +2575,7 @@ def getLandsatWrapper(
     weights = weights,
     compositingMethod = compositingMethod,
     compositingReducer = compositingReducer)
-  
+
   # Correct illumination
   if correctIllumination:
     print('Correcting illumination');
@@ -2442,13 +2589,13 @@ def getLandsatWrapper(
     else:
       exportBands = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'temp', 'compositeObsCount']
       nonDivideBands = ['temp', 'compositeObsCount']
-    
+
     exportCompositeCollection(\
       collection = ts,
-      exportPathRoot = exportPathRoot, 
+      exportPathRoot = exportPathRoot,
       outputName = outputName,
       origin = origin,
-      studyArea = studyArea, 
+      studyArea = studyArea,
       crs = crs,
       transform = transform,
       scale = scale,
@@ -2466,7 +2613,7 @@ def getLandsatWrapper(
       # includeSLCOffL7 = includeSLCOffL7,
       # convertToDailyMosaics = 'NA',
       # applyQABand = False,
-      # applyCloudScore = applyCloudScore, 
+      # applyCloudScore = applyCloudScore,
       # applyFmaskCloudMask = applyFmaskCloudMask,
       # applyCloudProbability = 'NA',
       # applyTDOM = applyTDOM,
@@ -2480,7 +2627,7 @@ def getLandsatWrapper(
       # zScoreThresh = zScoreThresh,
       # shadowSumThresh = shadowSumThresh,
       # contractPixels = contractPixels,
-      # dilatePixels = dilatePixels,      
+      # dilatePixels = dilatePixels,
       # correctIllumination = correctIllumination,
       # correctScale = correctScale,
       # nonDivideBands = nonDivideBands,
@@ -2491,7 +2638,7 @@ def getLandsatWrapper(
 
   args['processedScenes'] = ls
   args['processedComposites'] = ts
-  
+
   return args
 
 #########################################################################
@@ -2525,11 +2672,11 @@ def getProcessedLandsatScenes(
   preComputedTDOMIRMean = None,
   preComputedTDOMIRStdDev = None,
   landsatCollectionVersion = 'C2'):
-    
+
   origin = 'Landsat'
   toaOrSR = toaOrSR.upper()
   if toaOrSR.lower() == 'toa' and landsatCollectionVersion.lower() == 'c1' and (applyFmaskCloudMask or applyFmaskCloudShadowMask  or applyFmaskSnowMask ):
-    addPixelQA = True    
+    addPixelQA = True
   else:
     addPixelQA = False
 
@@ -2537,7 +2684,7 @@ def getProcessedLandsatScenes(
   #Wrap the dates if needed
   wrapOffset = 0
   if startJulian > endJulian:
-    wrapOffset = 365  
+    wrapOffset = 365
   startDate = ee.Date.fromYMD(startYear,1,1).advance(startJulian-1,'day')
   endDate = ee.Date.fromYMD(endYear,1,1).advance(endJulian-1+wrapOffset,'day')
 
@@ -2574,12 +2721,11 @@ def getProcessedLandsatScenes(
       cloudScorePctl = cloudScorePctl,
       contractPixels = contractPixels,
       dilatePixels = dilatePixels,
-      performCloudScoreOffset = performCloudScoreOffset, 
+      performCloudScoreOffset = performCloudScoreOffset,
       preComputedCloudScoreOffset = preComputedCloudScoreOffset)
 
   if applyFmaskCloudMask:
     print('Applying Fmask Cloud Mask')
-    
     ls = ls.map(lambda img: applyBitMask(img,fmaskBitDict[landsatCollectionVersion]['cloud'],landsatFmaskBandNameDict[landsatCollectionVersion]))
 
   if applyTDOM:
@@ -2608,9 +2754,9 @@ def getProcessedLandsatScenes(
   ls = ls.map(simpleAddIndices)\
           .map(getTasseledCap)\
           .map(simpleAddTCAngles)
-       
+
   # Add Sensor Band
-  ls = ls.map(lambda img: addSensorBand(img, landsatCollectionVersion+'_landsat', toaOrSR))    
+  ls = ls.map(lambda img: addSensorBand(img, landsatCollectionVersion+'_landsat', toaOrSR))
 
   return ls.set(args)
 
@@ -2644,7 +2790,7 @@ def getProcessedSentinel2Scenes(\
   preComputedTDOMIRMean = None,
   preComputedTDOMIRStdDev = None,
   cloudProbThresh = 40):
-  
+
   origin = 'Sentinel2'
   toaOrSR = toaOrSR.upper()
 
@@ -2652,14 +2798,14 @@ def getProcessedSentinel2Scenes(\
   #Wrap the dates if needed
   wrapOffset = 0
   if startJulian > endJulian:
-    wrapOffset = 365  
+    wrapOffset = 365
   startDate = ee.Date.fromYMD(startYear,1,1).advance(startJulian-1,'day')
   endDate = ee.Date.fromYMD(endYear,1,1).advance(endJulian-1+wrapOffset,'day')
 
   args = formatArgs(locals())
   if 'args' in args.keys():
     del args['args']
-  
+
   print('Get Processed Sentinel2: ')
   print('Start date:', startDate.format('MMM dd yyyy').getInfo(),', End date:', endDate.format('MMM dd yyyy').getInfo())
   for arg in args.keys():
@@ -2667,20 +2813,20 @@ def getProcessedSentinel2Scenes(\
 
   #Get Sentinel2 image collection
   s2s = getS2(\
-    studyArea = studyArea, 
-    startDate = startDate, 
-    endDate = endDate, 
-    startJulian = startJulian, 
+    studyArea = studyArea,
+    startDate = startDate,
+    endDate = endDate,
+    startJulian = startJulian,
     endJulian = endJulian,
     resampleMethod = resampleMethod,
     toaOrSR = toaOrSR,
     convertToDailyMosaics = convertToDailyMosaics,
     addCloudProbability = applyCloudProbability)
-  
+
   if applyQABand:
     print('Applying QA Band Cloud Mask')
     s2s = s2s.map(maskS2clouds)
-  
+
   if applyCloudScore:
     print('Applying Cloud Score')
     s2s = applyCloudScoreAlgorithm(\
@@ -2690,7 +2836,7 @@ def getProcessedSentinel2Scenes(\
       cloudScorePctl = cloudScorePctl,
       contractPixels = contractPixels,
       dilatePixels = dilatePixels,
-      performCloudScoreOffset = performCloudScoreOffset, 
+      performCloudScoreOffset = performCloudScoreOffset,
       preComputedCloudScoreOffset = preComputedCloudScoreOffset)
 
   if applyCloudProbability:
@@ -2718,7 +2864,7 @@ def getProcessedSentinel2Scenes(\
       shadowSumBands = ['nir','swir1'],
       preComputedTDOMIRMean = preComputedTDOMIRMean,
       preComputedTDOMIRStdDev = preComputedTDOMIRStdDev)
-  
+
   # Add common indices
   s2s = s2s.map(simpleAddIndices)\
            .map(getTasseledCap)\
@@ -2771,7 +2917,7 @@ def getSentinel2Wrapper(\
   preComputedTDOMIRMean = None,
   preComputedTDOMIRStdDev = None,
   cloudProbThresh = 40):
-  
+
   origin = 'Sentinel2'
   toaOrSR = toaOrSR.upper()
 
@@ -2806,14 +2952,14 @@ def getSentinel2Wrapper(\
     preComputedTDOMIRMean = preComputedTDOMIRMean,
     preComputedTDOMIRStdDev = preComputedTDOMIRStdDev,
     cloudProbThresh = cloudProbThresh)
- 
+
   #Add zenith and azimuth
   #if correctIllumination:
   #  s2s = s2s.map(function(img){
   #    return addZenithAzimuth(img,'TOA',{'TOA':'MEAN_SOLAR_ZENITH_ANGLE'},{'TOA':'MEAN_SOLAR_AZIMUTH_ANGLE'});
   #  });
   #}
-  
+
   #Create composite time series
   ts = compositeTimeSeries(\
     ls = s2s,
@@ -2824,12 +2970,12 @@ def getSentinel2Wrapper(\
     timebuffer = timebuffer,
     weights = weights,
     compositingMethod = compositingMethod)
-  
+
   #Correct illumination
   # if (correctIllumination){
   #   f = ee.Image(ts.first());
   #   Map.addLayer(f,vizParamsFalse,'First-non-illuminated',false);
-  
+
   #   print('Correcting illumination');
   #   ts = ts.map(illuminationCondition)
   #     .map(function(img){
@@ -2837,8 +2983,8 @@ def getSentinel2Wrapper(\
   #     });
   #   f = ee.Image(ts.first());
   #   Map.addLayer(f,vizParamsFalse,'First-illuminated',false);
-  
-  # Export composites  
+
+  # Export composites
   if exportComposites:
     exportBandDict = {\
       'SR_medoid':['cb', 'blue', 'green', 'red', 're1','re2','re3','nir', 'nir2', 'waterVapor', 'swir1', 'swir2','compositeObsCount','sensor','year','julianDay'],
@@ -2852,13 +2998,13 @@ def getSentinel2Wrapper(\
     }
     exportBands = exportBandDict[toaOrSR + '_' + compositingMethod]
     nonDivideBands = nonDivideBandDict[compositingMethod]
-    
+
     exportCompositeCollection(\
       collection = ts,
-      exportPathRoot = exportPathRoot, 
+      exportPathRoot = exportPathRoot,
       outputName = outputName,
       origin = origin,
-      studyArea = studyArea, 
+      studyArea = studyArea,
       crs = crs,
       transform = transform,
       scale = scale,
@@ -2875,7 +3021,7 @@ def getSentinel2Wrapper(\
 
   args['processedScenes'] = s2s
   args['processedComposites'] = ts
-  
+
   return args
 
 # Hybrid get Landsat and Sentinel 2 processed scenes
@@ -2922,10 +3068,10 @@ def getProcessedLandsatAndSentinel2Scenes(
       preComputedSentinel2TDOMIRStdDev = None,
       cloudProbThresh = 40,
       landsatCollectionVersion = 'C2'):
-  
+
   if toaOrSR == 'SR':
     runChastainHarmonization = False
-    
+
   origin = 'Landsat-Sentinel2-Hybrid'
   toaOrSR = toaOrSR.upper()
 
@@ -2933,7 +3079,7 @@ def getProcessedLandsatAndSentinel2Scenes(
   #Wrap the dates if needed
   wrapOffset = 0
   if startJulian > endJulian:
-    wrapOffset = 365  
+    wrapOffset = 365
   startDate = ee.Date.fromYMD(startYear,1,1).advance(startJulian-1,'day')
   endDate = ee.Date.fromYMD(endYear,1,1).advance(endJulian-1+wrapOffset,'day')
 
@@ -2975,7 +3121,7 @@ def getProcessedLandsatAndSentinel2Scenes(
     preComputedTDOMIRMean = preComputedLandsatTDOMIRMean,
     preComputedTDOMIRStdDev = preComputedSentinel2TDOMIRStdDev,
     landsatCollectionVersion = landsatCollectionVersion)
-  
+
   #Get Sentinel 2
   s2s = getProcessedSentinel2Scenes(\
     studyArea = studyArea,
@@ -3018,9 +3164,9 @@ def getProcessedLandsatAndSentinel2Scenes(
 
 
   if runChastainHarmonization and toaOrSR == 'TOA':
-    
+
     # Separate each sensor
-    
+
     tm = ls.filter(ee.Filter.inList('SENSOR_ID',['TM','ETM']))
     oli = ls.filter(ee.Filter.eq('SENSOR_ID','OLI_TIRS'))
     # else:
@@ -3035,20 +3181,20 @@ def getProcessedLandsatAndSentinel2Scenes(
     oli = fillEmptyCollections(oli, ee.Image(ls.first()))
 
     print('Running Chastain et al 2019 harmonization')
-    
+
     #Apply correction
     #Currently coded to go to ETM+
-    
+
     #No need to correct ETM to ETM
     # tm = tm.map(function(img){return getImagesLib.harmonizationChastain(img, 'ETM','ETM')})
     # etm = etm.map(function(img){return getImagesLib.harmonizationChastain(img, 'ETM','ETM')})
-    
+
     #Harmonize the other two
     oli = oli.map(lambda img: harmonizationChastain(img, 'OLI','ETM'))
     msi = msi.map(lambda img: harmonizationChastain(img, 'MSI','ETM'))
-    
+
     s2s = msi
-    
+
     #Merge Landsat back together
     ls = ee.ImageCollection(tm.merge(oli))
 
@@ -3061,7 +3207,7 @@ def getProcessedLandsatAndSentinel2Scenes(
 
   merged = merged.set(args)
 
-  
+
   return merged
 #################################################################################
 #Function to register an imageCollection to images within it
@@ -3081,10 +3227,10 @@ def coRegisterCollection(images,referenceBands = ['nir']):
             }
         displacement = image.select(referenceBands).displacement(**displacement_params)
         return image.displace(displacement)
-        
+
     out = ee.ImageCollection(ee.ImageCollection(images.toList(10000,1)).map(registerImage))#(ee.Image(images.toList(10000,0).get(1)),referenceImage)
     out = ee.ImageCollection(images.limit(1).merge(out))
-    
+
     return out
 #################################################################################
 #Function to find a subset of a collection
@@ -3093,17 +3239,17 @@ def coRegisterCollection(images,referenceBands = ['nir']):
 def coRegisterGroups(imgs,fieldName = 'SENSING_ORBIT_NUMBER',fieldIsNumeric = True):
     groups = ee.Dictionary(imgs.aggregate_histogram(fieldName)).keys()
     if fieldIsNumeric:
-        groups = groups.map(lambda n: ee.Number.parse(n)) 
-        
+        groups = groups.map(lambda n: ee.Number.parse(n))
+
     out =ee.ImageCollection(ee.FeatureCollection(groups.map(lambda group:coRegisterCollection(imgs.filter(ee.Filter.eq(fieldName,group))))).flatten())
-    
+
     return out
 #################################################################################
 def getLandsatAndSentinel2HybridWrapper(\
-  studyArea, 
-  startYear, 
-  endYear, 
-  startJulian, 
+  studyArea,
+  startYear,
+  endYear,
+  startJulian,
   endJulian,
   timebuffer =  0,
   weights =  [1],
@@ -3150,7 +3296,7 @@ def getLandsatAndSentinel2HybridWrapper(\
   preComputedSentinel2TDOMIRStdDev = None,
   cloudProbThresh = 40,
   landsatCollectionVersion = 'C2'):
-  
+
   origin = 'Landsat-Sentinel2-Hybrid'
   toaOrSR = toaOrSR.upper()
 
@@ -3214,7 +3360,7 @@ def getLandsatAndSentinel2HybridWrapper(\
 
   # Export composite collection
   if exportComposites:
-    
+
     exportBandDict = {\
       'medoid':['blue', 'green', 'red','nir','swir1', 'swir2','compositeObsCount','sensor','year','julianDay'],
       'median':['blue', 'green', 'red','nir','swir1', 'swir2','compositeObsCount']\
@@ -3228,10 +3374,10 @@ def getLandsatAndSentinel2HybridWrapper(\
 
     exportCompositeCollection(\
       collection = composites,
-      exportPathRoot = exportPathRoot, 
+      exportPathRoot = exportPathRoot,
       outputName = outputName,
       origin = origin,
-      studyArea = studyArea, 
+      studyArea = studyArea,
       crs = crs,
       transform = transform,
       scale = scale,
@@ -3260,7 +3406,7 @@ def getLandsatAndSentinel2HybridWrapper(\
 def getHarmonicList(yearDateImg,transformBandName,harmonicList):
   t= yearDateImg.select([transformBandName])
   selectBands = ee.List.sequence(0,len(harmonicList)-1)
-    
+
   def sinCat(h):
     ht = h*100
     return ee.String('sin_').cat(str(ht)).cat('_').cat(transformBandName)
@@ -3269,27 +3415,27 @@ def getHarmonicList(yearDateImg,transformBandName,harmonicList):
   def cosCat(h):
     ht =h*100;
     return ee.String('cos_').cat(str(ht)).cat('_').cat(transformBandName)
-    
+
   cosNames = list(map(lambda i : cosCat(i),harmonicList))
-      
-    
-  
-  multipliers = ee.Image(harmonicList).multiply(ee.Number(math.pi).float()) 
+
+
+
+  multipliers = ee.Image(harmonicList).multiply(ee.Number(math.pi).float())
   sinInd = (t.multiply(ee.Image(multipliers))).sin().select(selectBands,sinNames).float()
   cosInd = (t.multiply(ee.Image(multipliers))).cos().select(selectBands,cosNames).float()
-  
+
   return yearDateImg.addBands(sinInd.addBands(cosInd))
-  
+
 #########################################################################
 #########################################################################
-#Takes a dependent and independent variable and returns the dependent, 
+#Takes a dependent and independent variable and returns the dependent,
 # sin of ind, and cos of ind
 #Intended for harmonic regression
 def getHarmonics2(collection,transformBandName,harmonicList,detrend = False):
- 
+
   depBandNames = ee.Image(collection.first()).bandNames().remove(transformBandName)
   depBandNumbers = depBandNames.map(lambda dbn:depBandNames.indexOf(dbn))
-  
+
   def harmWrap(img):
     outT = getHarmonicList(img,transformBandName,harmonicList)\
     .copyProperties(img,['system:time_start','system:time_end'])
@@ -3299,15 +3445,15 @@ def getHarmonics2(collection,transformBandName,harmonicList,detrend = False):
   if not detrend:
     outBandNames = ee.Image(out.first()).bandNames().removeAll(['year'])
     out = out.select(outBandNames)
-  
-  
+
+
   indBandNames = ee.Image(out.first()).bandNames().removeAll(depBandNames)
   indBandNumbers = indBandNames.map(lambda ind: ee.Image(out.first()).bandNames().indexOf(ind))
-  
-  
+
+
   out = out.set({'indBandNames':indBandNames,'depBandNames':depBandNames,\
                 'indBandNumbers':indBandNumbers,'depBandNumbers':depBandNumbers})
-  
+
   return out
 
 #########################################################################
@@ -3322,24 +3468,24 @@ def newRobustMultipleLinear2(dependentsIndependents):
   bns = ee.Image(dependentsIndependents.first()).bandNames()
   dependents = ee.List(dependentsIndependents.get('depBandNames'))
   independents = ee.List(dependentsIndependents.get('indBandNames'))
-  
+
   #dependent = bns.slice(0,1)
   #independents = bns.slice(1,null)
   noIndependents = independents.length().add(1)
   noDependents = dependents.length()
-  
+
   outNames = ee.List(['intercept']).cat(independents)
- 
-  #Add constant band for intercept and reorder for 
+
+  #Add constant band for intercept and reorder for
   #syntax: constant, ind1,ind2,ind3,indn,dependent
   def forFitFun(img):
     out = img.addBands(ee.Image(1).select([0],['constant']))
     out = out.select(ee.List(['constant',independents]).flatten())
     return out.addBands(img.select(dependents))
-  
-  
+
+
   forFit = dependentsIndependents.map(forFitFun)
-    
+
   #Apply reducer, and convert back to image with respective bandNames
   reducerOut = forFit.reduce(ee.Reducer.linearRegression(noIndependents,noDependents))
   # // test = forFit.reduce(ee.Reducer.robustLinearRegression(noIndependents,noDependents,0.2))
@@ -3353,7 +3499,7 @@ def newRobustMultipleLinear2(dependentsIndependents):
   reducerOut = reducerOut.set({'noDependents':ee.Number(noDependents),\
   'modelLength':ee.Number(noIndependents)\
   })
-  
+
   return reducerOut
 #########################################################################
 #########################################################################
@@ -3371,7 +3517,7 @@ def getPeakDate(coeffs,peakDirection = 1):
 
   sin = coeffs.select([0])
   cos = coeffs.select([1])
-  
+
   #Find where in cycle slope is zero
   greenDate = ((sin.divide(cos)).atan()).divide(2*math.pi).rename(['peakDate'])
   greenDateLater = greenDate.add(0.5)
@@ -3389,9 +3535,9 @@ def getPeakDate(coeffs,peakDirection = 1):
               .multiply(ee.Image.constant(peakDirection))\
               .addBands(greenDateLater)
   finalGreenDate = ee.ImageCollection([predicted1,predicted2]).qualityMosaic('predicted').select(['peakDate']).rename(['peakJulianDay'])
-  
+
   finalGreenDate = finalGreenDate.where(finalGreenDate.lt(0), greenDate.add(1)).multiply(365).int16();
-  
+
   #Convert to month and day of month
   greenMonth = finalGreenDate.remap(julianDay,monthRemap).rename(['peakMonth'])
   greenMonthDay = finalGreenDate.remap(julianDay,monthDayRemap).rename(['peakDayOfMonth'])
@@ -3411,13 +3557,13 @@ def getPeakDate(coeffs,peakDirection = 1):
 #Example of what this code is doing can be found here:
 #  http://www.wolframalpha.com/input/?i=integrate+0.15949074923992157+%2B+-0.08287599*sin(2+PI+T)+%2B+-0.11252010613*cos(2+PI+T)++from+0+to+1
 def getAreaUnderCurve(harmCoeffs,t0= 0,t1 = 1):
- 
+
   #Pull apart the model
   amplitude = harmCoeffs.select([1]).hypot(harmCoeffs.select([0]))
   intereceptNormalized = amplitude#When making the min 0, the intercept becomes the amplitude (the hypotenuse)
   sin = harmCoeffs.select([0])
   cos = harmCoeffs.select([1])
-  
+
   #Find the sum from - infinity to 0
   sum0 = intereceptNormalized.multiply(t0)\
             .subtract(sin.divide(2*math.pi).multiply(math.sin(2*math.pi*t0)))\
@@ -3445,51 +3591,51 @@ def getPhaseAmplitudePeak(coeffs,t0 = 0,t1 = 1):
   def modelGetter(mn):
     mn = ee.Number(mn)
     return bandNames.slice(mn.multiply(modelLength),mn.multiply(modelLength).add(modelLength))
-  
+
   parsedModel =models.map(modelGetter)
-    
-  
+
+
   #print('Parsed harmonic regression model',parsedModel)
 
   #Iterate across models to convert to phase, amplitude, and peak
   def papGetter(pm):
     pm = ee.List(pm);
     modelCoeffs = coeffs.select(pm)
-      
+
     intercept = modelCoeffs.select('.*_intercept')
     harmCoeffs = modelCoeffs.select('.*_200_year')
     outName = ee.String(ee.String(pm.get(1)).split('_').get(0))
     sign = ee.Number(ee.Dictionary(changeDirDict).get(outName)).multiply(-1)
-  
+
     amplitude = harmCoeffs.select([1]).hypot(harmCoeffs.select([0]))\
               .multiply(2)\
               .rename([outName.cat('_amplitude')])
     phase = harmCoeffs.select([0]).atan2(harmCoeffs.select([1]))\
               .unitScale(-math.pi, math.pi)\
               .rename([outName.cat('_phase')])
-      
+
     #Get peak date info
     peakDate = getPeakDate(harmCoeffs,sign)
     peakDateBandNames = peakDate.bandNames()
     peakDateBandNames = peakDateBandNames.map(lambda bn: outName.cat(ee.String('_').cat(ee.String(bn))))
-      
+
     #Get the left sum
     leftSum = getAreaUnderCurve(harmCoeffs,t0,t1)
     leftSumBandNames = leftSum.bandNames()
     leftSumBandNames = leftSumBandNames.map(lambda bn: outName.cat(ee.String('_').cat(ee.String(bn))))
-     
+
     return amplitude\
             .addBands(phase)\
             .addBands(peakDate.rename(peakDateBandNames))\
             .addBands(leftSum.rename(leftSumBandNames))
-    
-    
-  
+
+
+
   #Convert to an image
   phaseAmplitude =parsedModel.map(papGetter)
 
   phaseAmplitude = ee.ImageCollection.fromImages(phaseAmplitude)
-  
+
   phaseAmplitude = ee.Image(collectionToImage(phaseAmplitude)).float()\
         .copyProperties(coeffs,['system:time_start'])
   #print('pa',phaseAmplitude);
@@ -3517,17 +3663,17 @@ def newPredict(coeffs,harmonics):
   def mnGetter(mn):
     mn = ee.Number(mn)
     return bandNames.slice(mn.multiply(modelLength),mn.multiply(modelLength).add(modelLength))
-  
+
   parsedModel =models.map(mnGetter)
-    
+
   #print('Parsed harmonic regression model',parsedModel,predictedBandNames)
-  
+
   #Apply parsed model
   def predGetter(img):
     time = img.select(timeBand)
     actual = img.select(actualBands).float()
     predictorBands = img.select(indBandNames)
-    
+
     #Iterate across each model for each dependent variable
     def pmGetter(pm):
       pm = ee.List(pm)
@@ -3535,28 +3681,28 @@ def newPredict(coeffs,harmonics):
       outName = ee.String(pm.get(1)).cat('_predicted')
       intercept = modelCoeffs.select(modelCoeffs.bandNames().slice(0,1))
       others = modelCoeffs.select(modelCoeffs.bandNames().slice(1,None))
-    
+
       predicted = predictorBands.multiply(others).reduce(ee.Reducer.sum()).add(intercept).float()
       return predicted.float()
-    
-    
+
+
     predictedList =parsedModel.map(pmGetter)
-      
+
     #Convert to an image
     predictedList = ee.ImageCollection.fromImages(predictedList)
     predictedImage = collectionToImage(predictedList).select(predictedBandNumbers,predictedBandNames)
-    
+
     #Set some metadata
     out = actual.addBands(predictedImage.float())\
     .copyProperties(img,['system:time_start','system:time_end'])
     return out
-  
+
   predicted =harmonics.map(predGetter)
-    
+
   predicted = ee.ImageCollection(predicted)
- 
+
   #Map.addLayer(predicted,{},'predicted',False)
-  
+
   return predicted
 
 #########################################################################
@@ -3578,7 +3724,7 @@ def getDateStack(startYear,endYear,startJulian,endJulian,frequency):
   l = [i%i for i in l]
   c = ee.Image(l).rename(indexNames)
   c = c.divide(c)
- 
+
   dateSets = dateSets.flatten()
 
   def dtGetter(dt):
@@ -3586,7 +3732,7 @@ def getDateStack(startYear,endYear,startJulian,endJulian,frequency):
     y = dt.get('year')
     d = dt.getFraction('year')
     i = ee.Image(y.add(d)).float().select([0],['year'])
-    
+
     i = c.addBands(i).float()\
       .set('system:time_start',dt.millis())\
       .set('system:time_end',dt.advance(frequency,'day').millis())
@@ -3601,23 +3747,23 @@ def getHarmonicCoefficientsAndFit(allImages,indexNames,whichHarmonics = [2],detr
 
   #Select desired bands
   allIndices = allImages.select(indexNames)
-  
+
   #Add date band
   if detrend:
     allIndices = allIndices.map(addDateBand)
   else:
     allIndices = allIndices.map(addYearFractionBand)
-  
-  
+
+
   #Add independent predictors (harmonics)
   withHarmonics = getHarmonics2(allIndices,'year',whichHarmonics,detrend)
   withHarmonicsBns = ee.Image(withHarmonics.first()).bandNames().slice(len(indexNames)+1,None)
-  
+
   #Optionally chart the collection with harmonics
- 
+
   #Fit a linear regression model
   coeffs = newRobustMultipleLinear2(withHarmonics)
-  
+
   #Can visualize the phase and amplitude if only the first ([2]) harmonic is chosen
   # if whichHarmonics == 2{
   #    pa = getPhaseAmplitude(coeffs);
@@ -3625,9 +3771,9 @@ def getHarmonicCoefficientsAndFit(allImages,indexNames,whichHarmonics = [2],detr
   #  seasonality = pa.select([1,0]).addBands(allIndices.select([indexNames[0]]).mean()).hsvToRgb();
   #  // Map.addLayer(seasonality, {}, 'Seasonality');
   #  }
-  
-  
-  
+
+
+
   #Map.addLayer(coeffs,{},'Harmonic Regression Coefficients',False)
   predicted = newPredict(coeffs,withHarmonics)
   return [coeffs,predicted]
@@ -3642,23 +3788,25 @@ def synthImage(coeffs,dateImage,indexNames,harmonics,detrend):
   constImage = ee.Image(1)
   if detrend:constImage = constImage.addBands(dateImage)
   for harm in harmonics:
-    constImage = constImage.addBands(ee.Image([dateImage.multiply(harm*math.pi).sin()]))\
-                           .addBands(ee.Image([dateImage.multiply(harm*math.pi).cos()]))
-
+    constImage = constImage.addBands(ee.Image([dateImage.multiply(harm*math.pi).sin()]).rename(['{}_sin'.format(harm*100)]))                       
+  for harm in harmonics:
+    constImage = constImage.addBands(ee.Image([dateImage.multiply(harm*math.pi).cos()]).rename(['{}_cos'.format(harm*100)]))
   
-  #Predict values for each band                    
+  # coeffssBn = coeffs.select(ee.String(indexNames[0]).cat('_.*'))
+  # print(constImage.bandNames().getInfo(),coeffssBn.bandNames().getInfo())
+  #Predict values for each band
   out = ee.Image(1);
   def predictWrapper(bn,out):
     bn = ee.String(bn)
     #Select coeffs for that band
-    coeffssBn = coeffs.select(ee.String(bn).cat('.*'))
+    coeffssBn = coeffs.select(ee.String(bn).cat('_.*'))
     predicted = constImage.multiply(coeffssBn).reduce('sum').rename(bn)
     return ee.Image(out).addBands(predicted)
-  
+
   out = ee.Image(ee.List(indexNames).iterate(predictWrapper,out));
-  
+
   out = out.select(ee.List.sequence(1, out.bandNames().size().subtract(1)))
- 
+
   return out
 #####################################################################
 #Wrapper function to get climate data
@@ -3705,7 +3853,7 @@ def getClimateWrapper(collectionName,studyArea,startYear,endYear,startJulian,end
       exportBands = ee.List(ee.Image(ts.first()).bandNames())
 
     exportCollection(exportPathRoot,collectionName.split('/')[-1],studyArea, crs,transform,scale,ts,startYear,endYear,startJulian,endJulian,compositingReducer,timebuffer,exportBands)
-  
+
   return ts####
 #####################################################################
 #Adds absolute difference from a specified band summarized by a provided percentile
@@ -3725,7 +3873,7 @@ def customQualityMosaic(inCollection,qualityBand,percentile):
   #Add an absolute difference from the specified percentile
   #This is inverted for the qualityMosaic function to properly prioritize
   inCollectionDelta = addAbsDiff(inCollection, qualityBand, percentile,-1)
-  
+
   #Apply the qualityMosaic function
   return inCollectionDelta.qualityMosaic('delta')
 
@@ -3736,16 +3884,16 @@ def customQualityMosaic(inCollection,qualityBand,percentile):
 #Wet snow over flat areas can result in false positives
 #Designed to work with TOA data. SR data will result in false negatives (omission)
 def simpleWaterMask(img,contractPixels = 0,slope_thresh = 10,elevationImagePath = "USGS/NED",elevationFocalMeanRadius = 5.5):
-  img = addTCAngles(img);
+  img = addTCAngles(img)
   ned = ee.Image(elevationImagePath).resample('bicubic')
   slope = ee.Terrain.slope(ned.focal_mean(elevationFocalMeanRadius))
   flat = slope.lte(slope_thresh)
-  
+
   waterMask = img.select(['tcAngleBW']).gte(-0.05)\
     .And(img.select(['tcAngleBG']).lte(0.05))\
     .And(img.select(['brightness']).lt(0.3))\
     .And(flat).focal_min(contractPixels)
-  
+
   return waterMask.rename(['waterMask'])
 #####################################################################
 #Jeff Ho Method for algal bloom detection
@@ -3762,17 +3910,17 @@ def HoCalcGreenness(img):
   r = img.select(['red'])
   g = img.select(['green'])
   b = img.select(['blue'])
-  
+
   #calculate intensity, hue
   I = r.add(g).add(b).rename(['I'])
   mins = r.min(g).min(b).rename(['mins'])
   H = mins.where(mins.eq(r),(b.subtract(r)).divide(I.subtract(r.multiply(3))).add(1) )
   H = H.where(mins.eq(g),(r.subtract(g)).divide(I.subtract(g.multiply(3))).add(2) )
   H = H.where(mins.eq(b),(g.subtract(b)).divide(I.subtract(b.multiply(3))) )
-    
+
   #pixels with hue below 1.6 more likely to be bloom and not suspended sediment
   Hthresh = H.lte(1.6)
-  
+
   return H.rename('H')
 
 
@@ -3784,10 +3932,10 @@ def HoCalcAlgorithm1(image):
   greenessThreshold = 1.6
 
   # Algorithm 1 based on:
-  # Wang, M., & Shi, W. (2007). The NIR-SWIR combined atmospheric 
-  #  correction approach for MODIS ocean color data processing. 
+  # Wang, M., & Shi, W. (2007). The NIR-SWIR combined atmospheric
+  #  correction approach for MODIS ocean color data processing.
   #  Optics Express, 15(24), 15722–15733.
-  
+
   # Add secondary filter using greenness function below
   image = image.addBands(HoCalcGreenness(image))
 
@@ -3796,7 +3944,7 @@ def HoCalcAlgorithm1(image):
 
   # Get binary image by applying the threshold
   bloom1_mask = image.select("H").lte(greenessThreshold).rename(["bloom1_mask"])
-  
+
 
   return image\
           .addBands(bloom1)\
@@ -3816,6 +3964,11 @@ testAreas['CO'] = ee.Geometry.Polygon(
           [-108.28630509064759, 37.18051220092945],
           [-106.74821915314759, 37.18051220092945],
           [-106.74821915314759, 38.085343638120925]]], None, False)
+testAreas['CO_North'] = ee.Geometry.Polygon(
+        [[[-106.41977869339524, 40.97947702393234],
+          [-106.41977869339524, 39.96406321814001],
+          [-105.20578943558274, 39.96406321814001],
+          [-105.20578943558274, 40.97947702393234]]], None, False)
 testAreas['CA'] =ee.Geometry.Polygon(
         [[[-119.96383760287506, 37.138150574108714],
           [-119.96383760287506, 36.40774412106424],
@@ -3827,3 +3980,9 @@ testAreas['CA_Small'] = ee.Geometry.Polygon(
           [-123.22566968374625, 38.993179504697586],
           [-122.60494214468375, 38.993179504697586],
           [-122.60494214468375, 39.677209599269155]]], None, False)
+
+testAreas['HI'] = ee.Geometry.Polygon(
+        [[[-160.50824874450544, 22.659814513909474],
+          [-160.50824874450544, 18.54750309959827],
+          [-154.35590499450544, 18.54750309959827],
+          [-154.35590499450544, 22.659814513909474]]], None, False)
