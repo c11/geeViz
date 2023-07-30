@@ -1,5 +1,5 @@
 """
-   Copyright 2020 Ian Housman
+   Copyright 2023 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,19 +22,66 @@ from google.auth.transport import requests as gReq
 from google.oauth2 import service_account
 
 from threading import Thread
-from IPython.display import IFrame
+from IPython.display import IFrame,display, HTML
 if sys.version_info[0] < 3:
     import SimpleHTTPServer, SocketServer
 else:
     import http.server, socketserver 
+creds_path = ee.oauth.get_credentials_path()
+######################################################################
+# Functions to handle various initialization/authentication workflows to try to get a user an initialized instance of ee
+
+# Function to have user input a project id if one is still needed
+def getProject():
+    provided_project = '{}.proj_id'.format(creds_path)
+    provided_project = os.path.normpath(provided_project)
+    
+    if not os.path.exists(provided_project):
+        project_id = input('Please enter GEE project ID: ')
+        print('You entered: {}'.format(project_id))
+        o = open(provided_project,'w')
+        o.write(project_id)
+        o.close()
+    o = open(provided_project,'r')
+    project_id=o.read()
+    print('Cached project id file path: {}'.format(provided_project))
+    print('Cached project id: {}'.format(project_id))
+    o.close()
+    return project_id
+def verified_initialize(project=None):
+    ee.Initialize(project=project)
+    z = ee.Number(1).getInfo()
+    print('Successfully initialized')
+# Function to handle various exceptions to initializing to GEE
+def robustInitializer():
+    try:
+        z = ee.Number(1).getInfo()
+    except:
+        print('Initializing GEE')
+        
+        if not os.path.exists(creds_path):
+            print('No credentials found')
+            print('Will attempt ee.Authenticate')
+            ee.Authenticate()
+        try:
+            verified_initialize(project=None)
+        except Exception as E:
+            print(E)
+            if str(E).find('Reauthentication is needed') >- 1:
+                ee.Authenticate()
+            
+            if str(E).find('project is not registered') > -1:
+                project_id=getProject()
+            else:
+                project_id = None
+            try:
+                verified_initialize(project=project_id)
+            except Exception as E:
+                print(E)
+                
 ######################################################################
 #Set up GEE and paths
-try:
-    z = ee.Number(1).getInfo()
-except:
-    print('Initializing GEE')
-    ee.Initialize()
-
+robustInitializer()
 geeVizFolder = 'geeViz'
 geeViewFolder = 'geeView'
 #Set up template web viewer
@@ -43,9 +90,9 @@ cwd = os.getcwd()
 
 paths = sys.path
 
-gee_py_modules_dir = site.getsitepackages()[-1]
-
-py_viz_dir = os.path.join(gee_py_modules_dir,geeVizFolder)
+# gee_py_modules_dir = site.getsitepackages()[-1]
+# py_viz_dir = os.path.join(gee_py_modules_dir,geeVizFolder)
+py_viz_dir = os.path.dirname(__file__)
 # os.chdir(py_viz_dir)
 print('geeViz package folder:', py_viz_dir)
 
@@ -59,6 +106,21 @@ if os.path.exists(ee_run_dir) == False:os.makedirs(ee_run_dir)
 ######################################################################
 #Functions
 
+######################################################################
+# Function to check if being run inside a notebook
+# Taken from: https://stackoverflow.com/questions/15411967/how-can-i-check-if-code-is-executed-in-the-ipython-notebook
+def is_notebook():
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True   # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False      # Probably standard Python interpreter
+######################################################################
 # Function for cleaning trailing .... in accessToken
 def cleanAccessToken(accessToken):
     while accessToken[-1] == '.': accessToken = accessToken[:-1]
@@ -79,7 +141,8 @@ def refreshToken(refresh_token_path = ee.oauth.get_credentials_path()):
             "refresh_token": refresh_token
     }
     r = requests.post(ee.oauth.TOKEN_URI, data=params)
-
+    # print('R:',r.json()['access_token'])
+    # input('press any key to continue')
     if r.ok:
         return cleanAccessToken(r.json()['access_token'])
     else:
@@ -133,8 +196,12 @@ class mapper:
         self.idDictList = []
         self.mapCommandList  = []
         self.ee_run_name = 'runGeeViz'
+
+        self.isNotebook = is_notebook()
+
         self.refreshTokenPath = ee.oauth.get_credentials_path()
         self.serviceKeyPath = None
+        self.queryWindowMode = 'sidePane'
         
     #Function for adding a layer to the map
     def addLayer(self,image,viz = {},name= None,visible= True):
@@ -169,14 +236,14 @@ class mapper:
     #Function for centering on a GEE object that has a geometry
     def centerObject(self,feature):
         try:
-            bounds = json.dumps(feature.geometry().bounds(100).getInfo())
+            bounds = json.dumps(feature.geometry().bounds(100,'EPSG:4326').getInfo())
         except Exception as e:
-            bounds = json.dumps(feature.bounds(100).getInfo())
+            bounds = json.dumps(feature.bounds(100,'EPSG:4326').getInfo())
         command = 'synchronousCenterObject('+bounds+')'
         
         self.mapCommandList.append(command)
     #Function for launching the web map after all adding to the map has been completed
-    def view(self,open_browser = True, open_iframe = False,iframe_height = 525):
+    def view(self,open_browser = None, open_iframe = None,iframe_height = 525):
         print('Starting webmap')
 
         # Get access token
@@ -190,20 +257,24 @@ class mapper:
                 print('Trying to authenticate to GEE using persistent refresh token.')
                 self.accessToken = refreshToken(self.refreshTokenPath)
         #Set up js code to populate0
-        lines = "showMessage('Loading',staticTemplates.loadingModal[mode]);\nfunction runGeeViz(){\n"
+        lines = "var layerLoadErrorMessages=[];showMessage('Loading',staticTemplates.loadingModal[mode]);\nfunction runGeeViz(){\n"
 
 
         #Iterate across each map layer to add js code to
         for idDict in self.idDictList:
-            t ="Map2.{}({},{},'{}',{});\n".format(idDict['function'],idDict['item'],idDict['viz'],idDict['name'],str(idDict['visible']).lower())
+            t ="Map2.{}({},{},'{}',{});".format(idDict['function'],idDict['item'],idDict['viz'],idDict['name'],str(idDict['visible']).lower())
+            t = 'try{\n\t'+t+'\n}catch(err){\n\tlayerLoadErrorMessages.push("Error loading: '+idDict['name']+'<br>GEE "+err);}\n'
             lines += t
-        
-        lines += "setTimeout(function(){$('#close-modal-button').click();}, 2500);\n"
+        lines += 'if(layerLoadErrorMessages.length>0){showMessage("Map.addLayer Error List",layerLoadErrorMessages.join("<br>"));}\n'
+        lines += "setTimeout(function(){if(layerLoadErrorMessages.length===0){$('#close-modal-button').click();}}, 2500);\n"
 
         #Iterate across each map command
         for mapCommand in self.mapCommandList:
             lines += mapCommand + '\n'
-
+        
+        # Set location of query outputs
+        lines += 'queryWindowMode = "{}"\n'.format(self.queryWindowMode)
+        
         lines+= "}"
         
         #Write out js file
@@ -212,6 +283,21 @@ class mapper:
         oo.writelines(lines)
         oo.close()
         # time.sleep(5)
+
+        # if not self.isNotebook:
+        #     self.Map.save(os.path.join(folium_html_folder,folium_html))
+        #     if not geeView.isPortActive(self.port):
+        #         print('Starting local web server at: http://localhost:{}/{}/'.format(self.port,geeView.geeViewFolder))
+        #         geeView.run_local_server(self.port)
+        #         print('Done')
+        #     else:
+        #         print('Local web server at: http://localhost:{}/{}/ already serving.'.format(self.port,geeView.geeViewFolder))
+        #     if open_browser:
+        #         geeView.webbrowser.open('http://localhost:{}/{}/{}'.format(self.port,geeView.geeViewFolder,folium_html),new = 1)
+
+        # else:
+        #     display(self.Map)
+        
         if not isPortActive(self.port):
             print('Starting local web server at: http://localhost:{}/{}/'.format(self.port,geeViewFolder))
             run_local_server(self.port)
@@ -221,11 +307,16 @@ class mapper:
         else:
             print('Local web server at: http://localhost:{}/{}/ already serving.'.format(self.port,geeViewFolder))
             # print('Refresh browser instance')
+       
+
         print('cwd',os.getcwd())
-        if open_browser:
+        if not self.isNotebook or open_browser:
             webbrowser.open('http://localhost:{}/{}/?accessToken={}'.format(self.port,geeViewFolder,self.accessToken),new = 1)
-        if open_iframe:
+        elif open_browser == False and open_iframe:
             self.IFrame = IFrame(src='http://localhost:{}/{}/?accessToken={}'.format(self.port,geeViewFolder,self.accessToken), width='100%', height='{}px'.format(iframe_height))
+        else:
+            self.IFrame = IFrame(src='http://localhost:{}/{}/?accessToken={}'.format(self.port,geeViewFolder,self.accessToken), width='100%', height='{}px'.format(iframe_height))
+            display(self.IFrame)
     def clearMap(self):
         self.layerNumber = 1
         self.idDictList = []
@@ -236,6 +327,38 @@ class mapper:
             self.mapCommandList.append(query_command)
     def setTitle(self,title):
         self.setMapTitle(title)
+
+    # Functions to set various click query properties
+    def setQueryCRS(self,crs):
+        print('Setting click query crs to: {}'.format(crs))
+        cmd = "crs='{}'".format(crs)
+        if cmd not in self.mapCommandList:
+            self.mapCommandList.append(cmd)
+    def setQueryScale(self,scale):
+        print('Setting click query scale to: {}'.format(scale))
+        cmd = "tansform=null;scale={};plotRadius={}".format(scale,scale/2.)
+        if cmd not in self.mapCommandList:
+            self.mapCommandList.append(cmd)
+    def setQueryTransform(self,transform):
+        print('Setting click query transform to: {}'.format(transform))
+        cmd = "scale=null;transform={};plotRadius={}".format(transform,transform[0]/2.)
+        if cmd not in self.mapCommandList:
+            self.mapCommandList.append(cmd)
+    def setQueryBoxColor(self,color):
+        if color[0] != '#':color = '#{}'.format(color)
+        print('Setting click query box color to: {}'.format(color))
+        cmd = "clickBoundsColor='{}'".format(color)
+        if cmd not in self.mapCommandList:
+            self.mapCommandList.append(cmd)
+    # Functions to handle location of query outputs
+    def setQueryWindowMode(self,mode):
+        self.queryWindowMode = mode
+    def setQueryToInfoWindow(self):
+        self.setQueryWindowMode('infoWindow')
+    def setQueryToSidePane(self):
+        self.setQueryWindowMode('sidePane')
+    
+    # Turn on query inspector 
     def turnOnInspector(self):
         # self.mapCommandList.append("$('#tools-collapse-div').addClass('show')")
         query_command = "$('#query-label').click();"

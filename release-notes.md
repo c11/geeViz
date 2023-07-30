@@ -1,3 +1,57 @@
+# geeViz 2023.7.1 Release Notes
+## July 14, 2023
+
+### New Features
+* **More robust authentication and initialization** - There are many inconsistencies being introduced for authenticating and initializing to GEE. A new function (`geeViz.geeView.robustInitializer`) attempts to handle some of these scenarios. It is not solid though and if you know your particular environment setup, it is best to authenticate and initialize before importing geeViz. There is also difficulty with authenticating on the javaScript client for geeView for some GEE accounts. If the javaScript instance fails to initialize, it will fall back on an existing auth proxy. Since this uses an account different from your own, it may result in errors in accessing assets for viewing in geeView. This can be solved by sharing assets publically. 
+
+### Bug fixes
+* `changeDetectionLib.getTimeImageCollectionFromComposites` has been updated to fill in a blank image for any missing years and allow a year range to be specified to allow for interpolation and extrapolation. The unused parameters of `startJulian` and `endJulian` are no longer used.
+____
+# geeViz 2023.6.1 Release Notes
+## June 13, 2023
+
+### New Features
+* **Folium based simple GEE object viewer** - A Folium-based GEE object viewer is now available (`foliumView.py`). The syntax is very similar to geeView. It tends to load faster, but be quite buggy with layer ordering, and lacks the ability to query values of layers. Examples are provided to help use it (`examples\foliumViewer.ipynb`,`examples\geeViewVSFoliumViewerExampleNotebook.ipynb`)
+
+* **GEE2Pandas data science helper module** - A new module geared toward going between traditional data formats (csv, Excel, dbf, json, etc) and GEE (`gee2Pandas.py`). Functions are provided to go from a Pandas dataframe to GEE featureCollection and back. An example is provided (`examples\gee2PandasExample.ipynb`)
+
+### Bug fixes
+* geeView layer names with odd characters are now accepted (`e.g. / \ `)
+____
+# geeViz 2023.4.1 Release Notes
+## April 11, 2023
+
+### New Features
+* **Default Query Output Location Change** - Query outputs are not placed in the side pane where the legend is located. 
+    * To back to using the default on-map infoWindow use: `Map.setQueryToInfoWindow()`
+
+* **Improved Upload To Asset Capabilities** - Can now upload tifs to gee assets more easily and handle setting a number of paramters (`assetManagerLib.uploadToGEEImageAsset`) and (`assetManagerLib.ingestImageFromGCS`)
+
+### Bug fixes
+* All MODIS collections have been updated to newer 061 collections
+* Query box size now reflects the chosen scale
+____
+# geeViz 2023.3.1 Release Notes
+## March 22, 2023
+
+### New Features
+* **Query (inspector) parameters setting** - Can now set the click query projection (crs, scale and/or transform), and query box color parameters. 
+    * To set the query box color: `Map.setQueryBoxColor(hexColor)`
+    * To set the query crs: `Map.setQueryCRS(crs)`
+    * To set the query transform: `Map.setQueryTransform(transform)` (note: this will set the scale to null)
+    * To set the query scale: `Map.setQueryScale(scale)` (note: this will set the transform to null)
+* **LandTrendr Array Image Support** - Can now export the raw LandTrendr array image output for vertex values only as well as RMSE (`changeDetectionLib.rawLTToVertices`). Functions to annualize vertex-only array images are now available too (`changeDetectionLib.simpleLTFit` with `arrayMode = True`. See the LANDTRENDRWrapper example script for a detailed example.
+* **Improved `Map.addLayer` error handling** - Any ee object added using a `Map.addLayer` call that fails to load will show an error and not load onto the map rather than stopping the entire map from loading.
+
+### Bug fixes
+* Landsat and Sentinel 2 resampling was set for all bands, including the qa bits. This resulted in speckling around the edges of cloud, cloud shadow, and snow masks. Now, the resampling method remains nearest neighbor for any qa bit band for both Landsat and Sentinel 2. This bug does not exist for MODIS since all masking is performed on continuous bands or the underlying mask of the thermal data.
+____
+# geeViz 2023.1.3 Release Notes
+## January 26, 2023
+
+### New Features
+* **Join Collections Using Different Field Names** - The `joinFeatureCollections` and `joinCollections` functions now optionally support different field names between the two collections. e.g. `joinFeatureCollections(primaryFC,secondaryFC,'primaryFieldName','secondaryFieldName')`
+____
 # geeViz 2023.1.2 Release Notes
 ## January 18, 2023
 
