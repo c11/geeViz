@@ -263,9 +263,11 @@ paket-files/
 # Python Tools for Visual Studio (PTVS)
 __pycache__/
 *.pyc
+~xamples
 
 #GEE run file
 *runGeeViz.js
+*foliumView.html
 # template's run.js
 template/ee/run.js
 gee-py-viz/ee/run2.js

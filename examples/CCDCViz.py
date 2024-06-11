@@ -1,5 +1,5 @@
 """
-   Copyright 2023 Ian Housman
+   Copyright 2024 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 import os,sys
 sys.path.append(os.getcwd())
 
-#Module imports
+#Module imports 
 import geeViz.getImagesLib as getImagesLib
 import geeViz.changeDetectionLib as changeDetectionLib
 ee = getImagesLib.ee
@@ -62,8 +62,7 @@ Map.addLayer(ccdcImg,{'opacity':0},'Raw CCDC Output',False)
 
 #Extract the change years and magnitude
 changeObj = changeDetectionLib.ccdcChangeDetection(ccdcImg,changeDetectionBandName);
-changeDetectionLib.lossMagPalette = changeDetectionLib.lossMagPalette.split(',')
-changeDetectionLib.lossMagPalette.reverse()
+
 Map.addLayer(changeObj[sortingMethod]['loss']['year'],{'min':startYear,'max':endYear,'palette':changeDetectionLib.lossYearPalette},'Loss Year')
 Map.addLayer(changeObj[sortingMethod]['loss']['mag'],{'min':-0.5,'max':-0.1,'palette':changeDetectionLib.lossMagPalette},'Loss Mag',False);
 Map.addLayer(changeObj[sortingMethod]['gain']['year'],{'min':startYear,'max':endYear,'palette':changeDetectionLib.gainYearPalette},'Gain Year');
@@ -71,27 +70,30 @@ Map.addLayer(changeObj[sortingMethod]['gain']['mag'],{'min':0.05,'max':0.2,'pale
 
 #Apply the CCDC harmonic model across a time series
 #First get a time series of time images 
-yearImages = changeDetectionLib.getTimeImageCollection(startYear,endYear,startJulian,endJulian,0.1);
+yearImages = changeDetectionLib.getTimeImageCollection(startYear,endYear,startJulian,endJulian,0.1)
 
 #Then predict the CCDC models
 fitted = changeDetectionLib.predictCCDC(ccdcImg,yearImages,fillGaps,whichHarmonics)
-Map.addLayer(fitted.select(['.*_predicted']),{'opacity':0},'Fitted CCDC',True);
-Map.addLayer(fitted.filter(ee.Filter.calendarRange(1990,1990,'year')).select(['.*_predicted']),{'opacity':0},'Fitted CCDC 1990',True);
+Map.addLayer(fitted.select(['.*_fitted']),{'opacity':0},'Fitted CCDC',True)
+Map.addLayer(fitted.filter(ee.Filter.calendarRange(1990,1990,'year')).select(['.*_fitted']),{'opacity':0},'Fitted CCDC 1990',True);
 
 # Synthetic composites visualizing
 # Take common false color composite bands and visualize them for the next to the last year
 
 # First get the bands of predicted bands and then split off the name
-fittedBns = fitted.select(['.*_predicted']).first().bandNames()
+fittedBns = fitted.select(['.*_fitted']).first().bandNames()
 bns = fittedBns.map(lambda bn: ee.String(bn).split('_').get(0))
 
 # Filter down to the next to the last year and a summer date range
+compositeYear = endYear-1
 syntheticComposites = fitted.select(fittedBns,bns)\
-    .filter(ee.Filter.calendarRange(endYear-1,endYear-1,'year'))\
-    .filter(ee.Filter.calendarRange(190,250)).first()
+    .filter(ee.Filter.calendarRange(compositeYear,compositeYear,'year'))
+    # .filter(ee.Filter.calendarRange(190,250)).first()
 
 # Visualize output as you would a composite
-Map.addLayer(syntheticComposites,getImagesLib.vizParamsFalse,'Synthetic Composite')
+getImagesLib.vizParamsFalse['dateFormat']='YYMMdd'
+getImagesLib.vizParamsFalse['advanceInterval']='day'
+Map.addTimeLapse(syntheticComposites,getImagesLib.vizParamsFalse,f'Synthetic Composite Time Lapse {compositeYear}')
 ####################################################################################################
 #Load the study region
 studyArea = ccdcImg.geometry()

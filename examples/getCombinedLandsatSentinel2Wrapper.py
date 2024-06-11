@@ -1,5 +1,5 @@
 """
-   Copyright 2022 Ian Housman
+   Copyright 2024 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -47,8 +47,8 @@ endJulian = 273
 # More than a 3 year span should be provided for time series methods to work 
 # well. If providing pre-computed stats for cloudScore and TDOM, this does not 
 # matter
-startYear = 2018
-endYear = 2022
+startYear = 2020
+endYear = 2023
 
 # Specify an annual buffer to include imagery from the same season 
 # timeframe from the prior and following year. timeBuffer = 1 will result 
@@ -114,7 +114,7 @@ applyCloudScoreLandsat = True
 applyCloudScoreSentinel2 = False
 
 applyTDOMLandsat = True
-applyTDOMSentinel2 = True
+applyTDOMSentinel2 = False
 
 #S2 only cloud/cloud shadow masking methods switches- generally do not use these
 #QA band method is fast but is generally awful- don't use if you like good composites
@@ -128,11 +128,22 @@ cloudHeights = ee.List.sequence(500,10000,500)
 #Whether to use the pre-computed cloud probabilities to mask
 #clouds for Sentinel 2
 #This method works really well
-applyCloudProbability = True
+applyCloudProbability = False
+
+# Whether to use the pre-computed cloudScore+ to mask
+# clouds and cloud shadows for Sentinel 2
+# This method works really well and should be used instead of all other methods once it finishes
+applyCloudScorePlusSentinel2 = True
 
 #If cloudProbability is chosen, choose a threshold 
 #(generally somewhere around 40-60 works well)
 cloudProbThresh = 40
+
+# If applyCloudScorePlus = True, choose a threshold
+# Adjustable threshold for converting CS+ QA to a binary mask.
+# Higher thresholds will mask out more clouds (e.g. partial occlusions like thin clouds, haze &
+# cirrus shadows). Lower thresholds will mask out fewer clouds.
+cloudScorePlusThresh = 0.6
 
 #Fmask switches- only for Landsat
 #Generally we do use these
@@ -225,6 +236,12 @@ preComputedSentinel2TDOMIRStdDev = preComputedTDOMStats['sentinel2']['stdDev']
 # Whether to export composites
 exportComposites = False
 
+# Whether to overwite existing assets should they exist or currently be exporting
+overwrite = False
+
+# Whether to print a lot of information about what is going on
+verbose = False
+
 #Set up Names for the export
 outputName = 'Landsat_Sentinel2_Hybrid'
 
@@ -260,19 +277,18 @@ processedAndComposites = getImagesLib.getLandsatAndSentinel2HybridWrapper(studyA
   False,250,
   exportComposites,outputName,exportPathRoot,crs,transform,scale,
   preComputedLandsatCloudScoreOffset,preComputedLandsatTDOMIRMean,preComputedLandsatTDOMIRStdDev,preComputedSentinel2CloudScoreOffset,preComputedSentinel2TDOMIRMean,preComputedSentinel2TDOMIRStdDev,
-  cloudProbThresh,landsatCollectionVersion);
+  cloudProbThresh,landsatCollectionVersion,
+  overwrite, verbose, applyCloudScorePlusSentinel2, cloudScorePlusThresh)
 
 #Separate into scenes and composites for subsequent analysis
 processedScenes = processedAndComposites['processedScenes']
 processedComposites = processedAndComposites['processedComposites']
 
 # Indicate what type of image is being added to speed up map service creation
-getImagesLib.vizParamsFalse['layerType']= 'geeImage';
+getImagesLib.vizParamsFalse['layerType']= 'geeImage'
 
 # Map.addLayer(processedComposites.select(['NDVI','NBR']),{'addToLegend':'false'},'Time Series (NBR and NDVI)',False)
-for year in range(startYear + timebuffer      ,endYear + 1 - timebuffer ):
-     t = processedComposites.filter(ee.Filter.calendarRange(year,year,'year')).mosaic()
-     Map.addLayer(t.float(),getImagesLib.vizParamsFalse,str(year),False)
+Map.addTimeLapse(processedComposites,getImagesLib.vizParamsFalse,'Composite Timelapse',False)
 ####################################################################################################
 #Load the study region
 Map.addLayer(studyArea, {'strokeColor': '0000FF'}, "Study Area", True)

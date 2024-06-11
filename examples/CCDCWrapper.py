@@ -1,5 +1,5 @@
 """
-   Copyright 2022 Ian Housman
+   Copyright 2023 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ endJulian = 365
 #well. If providing pre-computed stats for cloudScore and TDOM, this does not 
 #matter
 startYear = 1984
-endYear = 2021
+endYear = 2023
 
 #Choose whether to include Landat 7
 #Generally only included when data are limited

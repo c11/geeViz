@@ -1,5 +1,5 @@
 """
-   Copyright 2022 Ian Housman
+   Copyright 2023 Ian Housman
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ endJulian = 273
 # well. If providing pre-computed stats for cloudScore and TDOM, this does not 
 # matter
 startYear = 2016
-endYear = 2020
+endYear = 2023
 
 # Specify an annual buffer to include imagery from the same season 
 # timeframe from the prior and following year. timeBuffer = 1 will result 
